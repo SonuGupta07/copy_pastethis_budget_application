@@ -1,974 +1,869 @@
-import axios from "axios";
+import DashboardIcon from "@mui/icons-material/Dashboard";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import SavingsIcon from "@mui/icons-material/Savings";
+import RepeatIcon from "@mui/icons-material/Repeat";
+import CategoryIcon from "@mui/icons-material/Category";
+import AnalyticsIcon from "@mui/icons-material/Analytics";
+import SmartToyIcon from "@mui/icons-material/SmartToy";
+import NotificationsIcon from "@mui/icons-material/Notifications";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
+import SecurityIcon from "@mui/icons-material/Security";
+import HistoryIcon from "@mui/icons-material/History";
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
+export const navigationItems = [
+  {
+    section: "Overview",
+    items: [
+      {
+        label: "Dashboard",
+        path: "/dashboard",
+        icon: <DashboardIcon />,
+        roles: ["USER", "ADMIN", "MANAGER"],
+      },
+    ],
   },
-});
-
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("accessToken");
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    return config;
+  {
+    section: "Finance",
+    items: [
+      {
+        label: "Income",
+        path: "/income",
+        icon: <TrendingUpIcon />,
+        roles: ["USER", "ADMIN", "MANAGER"],
+      },
+      {
+        label: "Expenses",
+        path: "/expenses",
+        icon: <ReceiptLongIcon />,
+        roles: ["USER", "ADMIN", "MANAGER"],
+      },
+      {
+        label: "Budgets",
+        path: "/budgets",
+        icon: <AccountBalanceWalletIcon />,
+        roles: ["USER", "ADMIN", "MANAGER"],
+      },
+      {
+        label: "Savings Goals",
+        path: "/savings",
+        icon: <SavingsIcon />,
+        roles: ["USER", "ADMIN", "MANAGER"],
+      },
+      {
+        label: "Recurring",
+        path: "/recurring",
+        icon: <RepeatIcon />,
+        roles: ["USER", "ADMIN", "MANAGER"],
+      },
+      {
+        label: "Categories",
+        path: "/categories",
+        icon: <CategoryIcon />,
+        roles: ["USER", "ADMIN", "MANAGER"],
+      },
+    ],
   },
-  (error) => Promise.reject(error)
-);
-
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("tokenType");
-      localStorage.removeItem("user");
-    }
-
-    return Promise.reject(error);
-  }
-);
-
-export default api;
----------------------------------------
-import api from "./axios";
-
-export const registerUser = async (data) => {
-  const response = await api.post("/auth/register", data);
-  return response.data;
-};
-
-export const sendOtp = async (data) => {
-  const response = await api.post("/auth/send-otp", data);
-  return response.data;
-};
-
-export const verifyOtp = async (data) => {
-  const response = await api.post("/auth/verify-otp", data);
-  return response.data;
-};
-
-export const loginUser = async (data) => {
-  const response = await api.post("/auth/login", data);
-  return response.data;
-};
-
-export const forgotPassword = async (data) => {
-  const response = await api.post("/auth/forgot-password", data);
-  return response.data;
-};
-
-export const resetPassword = async (data) => {
-  const response = await api.post("/auth/reset-password", data);
-  return response.data;
-};
--------------------------------------------
-export const setToken = (token) => {
-  localStorage.setItem("accessToken", token);
-};
-
-export const getToken = () => {
-  return localStorage.getItem("accessToken");
-};
-
-export const removeToken = () => {
-  localStorage.removeItem("accessToken");
-};
-
-export const setTokenType = (tokenType) => {
-  localStorage.setItem("tokenType", tokenType);
-};
-
-export const getTokenType = () => {
-  return localStorage.getItem("tokenType");
-};
-
-export const setUser = (user) => {
-  localStorage.setItem("user", JSON.stringify(user));
-};
-
-export const getUser = () => {
-  const user = localStorage.getItem("user");
-  return user ? JSON.parse(user) : null;
-};
-
-export const clearAuthStorage = () => {
-  localStorage.removeItem("accessToken");
-  localStorage.removeItem("tokenType");
-  localStorage.removeItem("user");
-};
------------------------
-import { createContext, useState } from "react";
-import { loginUser } from "../api/authApi";
-import {
-  setToken,
-  setTokenType,
-  getToken,
-  setUser,
-  getUser,
-  clearAuthStorage,
-} from "../utils/storage";
-
-export const AuthContext = createContext(null);
-
-export const AuthProvider = ({ children }) => {
-  const [user, setAuthUser] = useState(getUser());
-  const [isAuthenticated, setIsAuthenticated] = useState(Boolean(getToken()));
-  const [loading, setLoading] = useState(false);
-
-  const login = async (loginData) => {
-    setLoading(true);
-
-    try {
-      const response = await loginUser(loginData);
-
-      if (!response.access_token) {
-        throw new Error("Access token not received from backend");
-      }
-
-      setToken(response.access_token);
-      setTokenType(response.token_type || "bearer");
-
-      const userData = {
-        email: loginData.email,
-      };
-
-      setUser(userData);
-      setAuthUser(userData);
-      setIsAuthenticated(true);
-
-      return response;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const logout = () => {
-    clearAuthStorage();
-    setAuthUser(null);
-    setIsAuthenticated(false);
-    window.location.href = "/login";
-  };
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        isAuthenticated,
-        login,
-        logout,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
-};
---------------------------------
-import { useContext } from "react";
-import { AuthContext } from "../context/AuthContext";
-
-const useAuth = () => {
-  return useContext(AuthContext);
-};
-
-export default useAuth;
----------------------------------
+  {
+    section: "Insights",
+    items: [
+      {
+        label: "Analytics",
+        path: "/analytics",
+        icon: <AnalyticsIcon />,
+        roles: ["USER", "ADMIN", "MANAGER"],
+      },
+      {
+        label: "AI Assistant",
+        path: "/ai/budget-advisor",
+        icon: <SmartToyIcon />,
+        roles: ["USER", "ADMIN", "MANAGER"],
+      },
+      {
+        label: "Notifications",
+        path: "/notifications",
+        icon: <NotificationsIcon />,
+        roles: ["USER", "ADMIN", "MANAGER"],
+      },
+    ],
+  },
+  {
+    section: "Administration",
+    items: [
+      {
+        label: "User Management",
+        path: "/admin/users",
+        icon: <ManageAccountsIcon />,
+        roles: ["ADMIN"],
+      },
+      {
+        label: "Role Management",
+        path: "/admin/roles",
+        icon: <SecurityIcon />,
+        roles: ["ADMIN"],
+      },
+      {
+        label: "Audit Logs",
+        path: "/admin/audit-logs",
+        icon: <HistoryIcon />,
+        roles: ["ADMIN"],
+      },
+      {
+        label: "Admin Panel",
+        path: "/admin",
+        icon: <AdminPanelSettingsIcon />,
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+];
+----------------------------------------------------
+import { Link, useLocation } from "react-router-dom";
 import {
   Box,
-  Card,
-  CardContent,
-  Container,
+  Chip,
+  Divider,
+  Drawer,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Toolbar,
   Typography,
   useTheme,
 } from "@mui/material";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import { navigationItems } from "../../app/navigation";
 
-const AuthLayout = ({ title, subtitle, children }) => {
+const drawerWidth = 280;
+
+const Sidebar = ({ mobileOpen, onClose, currentRole = "USER" }) => {
+  const location = useLocation();
   const theme = useTheme();
 
+  const drawerContent = (
+    <Box
+      sx={{
+        height: "100%",
+        background:
+          theme.palette.mode === "dark"
+            ? "linear-gradient(180deg, #0f172a 0%, #111827 100%)"
+            : "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+        borderRight: `1px solid ${theme.palette.divider}`,
+      }}
+    >
+      <Toolbar sx={{ px: 3, py: 2 }}>
+        <Box display="flex" alignItems="center" gap={1.5}>
+          <Box
+            sx={{
+              width: 44,
+              height: 44,
+              borderRadius: 3,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "linear-gradient(135deg, #2563eb, #7c3aed)",
+              color: "white",
+            }}
+          >
+            <AccountBalanceWalletIcon />
+          </Box>
+
+          <Box>
+            <Typography variant="h6" fontWeight={800} lineHeight={1.1}>
+              BudgetPro
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Finance Manager
+            </Typography>
+          </Box>
+        </Box>
+      </Toolbar>
+
+      <Box px={3} pb={2}>
+        <Chip
+          label={`${currentRole} Workspace`}
+          color={currentRole === "ADMIN" ? "error" : "primary"}
+          size="small"
+          sx={{ fontWeight: 700 }}
+        />
+      </Box>
+
+      <Divider />
+
+      <Box sx={{ overflowY: "auto", height: "calc(100% - 140px)", px: 1.5 }}>
+        {navigationItems.map((section) => {
+          const visibleItems = section.items.filter((item) =>
+            item.roles.includes(currentRole)
+          );
+
+          if (visibleItems.length === 0) return null;
+
+          return (
+            <Box key={section.section} mt={2}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                fontWeight={800}
+                sx={{ px: 2, textTransform: "uppercase", letterSpacing: 0.8 }}
+              >
+                {section.section}
+              </Typography>
+
+              <List dense>
+                {visibleItems.map((item) => {
+                  const active =
+                    location.pathname === item.path ||
+                    location.pathname.startsWith(`${item.path}/`);
+
+                  return (
+                    <ListItemButton
+                      key={item.path}
+                      component={Link}
+                      to={item.path}
+                      onClick={onClose}
+                      sx={{
+                        my: 0.5,
+                        borderRadius: 3,
+                        color: active ? "primary.main" : "text.primary",
+                        backgroundColor: active
+                          ? theme.palette.mode === "dark"
+                            ? "rgba(59,130,246,0.16)"
+                            : "rgba(37,99,235,0.10)"
+                          : "transparent",
+                        "&:hover": {
+                          backgroundColor:
+                            theme.palette.mode === "dark"
+                              ? "rgba(255,255,255,0.06)"
+                              : "rgba(15,23,42,0.06)",
+                        },
+                      }}
+                    >
+                      <ListItemIcon
+                        sx={{
+                          color: active ? "primary.main" : "text.secondary",
+                          minWidth: 42,
+                        }}
+                      >
+                        {item.icon}
+                      </ListItemIcon>
+
+                      <ListItemText
+                        primary={item.label}
+                        primaryTypographyProps={{
+                          fontWeight: active ? 800 : 600,
+                          fontSize: 14,
+                        }}
+                      />
+                    </ListItemButton>
+                  );
+                })}
+              </List>
+            </Box>
+          );
+        })}
+      </Box>
+    </Box>
+  );
+
+  return (
+    <>
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={onClose}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: "block", lg: "none" },
+          "& .MuiDrawer-paper": {
+            width: drawerWidth,
+            border: "none",
+          },
+        }}
+      >
+        {drawerContent}
+      </Drawer>
+
+      <Drawer
+        variant="permanent"
+        sx={{
+          display: { xs: "none", lg: "block" },
+          width: drawerWidth,
+          flexShrink: 0,
+          "& .MuiDrawer-paper": {
+            width: drawerWidth,
+            border: "none",
+          },
+        }}
+        open
+      >
+        {drawerContent}
+      </Drawer>
+    </>
+  );
+};
+
+export default Sidebar;
+--------------------------------------------------------
+import {
+  AppBar,
+  Avatar,
+  Badge,
+  Box,
+  IconButton,
+  InputBase,
+  Menu,
+  MenuItem,
+  Toolbar,
+  Tooltip,
+  Typography,
+  alpha,
+  useTheme,
+} from "@mui/material";
+import MenuIcon from "@mui/icons-material/Menu";
+import SearchIcon from "@mui/icons-material/Search";
+import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import LogoutIcon from "@mui/icons-material/Logout";
+import PersonIcon from "@mui/icons-material/Person";
+import { useState } from "react";
+import useAuth from "../../hooks/useAuth";
+
+const drawerWidth = 280;
+
+const Navbar = ({ onMenuClick, onThemeToggle, mode = "light" }) => {
+  const theme = useTheme();
+  const { user, logout } = useAuth();
+
+  const [anchorEl, setAnchorEl] = useState(null);
+
+  const userEmail = user?.email || "user@example.com";
+  const initials = userEmail?.charAt(0)?.toUpperCase() || "U";
+
+  return (
+    <AppBar
+      position="fixed"
+      elevation={0}
+      sx={{
+        width: { lg: `calc(100% - ${drawerWidth}px)` },
+        ml: { lg: `${drawerWidth}px` },
+        backdropFilter: "blur(20px)",
+        background:
+          theme.palette.mode === "dark"
+            ? "rgba(15,23,42,0.78)"
+            : "rgba(255,255,255,0.82)",
+        color: "text.primary",
+        borderBottom: `1px solid ${theme.palette.divider}`,
+      }}
+    >
+      <Toolbar sx={{ gap: 2 }}>
+        <IconButton
+          color="inherit"
+          edge="start"
+          onClick={onMenuClick}
+          sx={{ display: { lg: "none" } }}
+        >
+          <MenuIcon />
+        </IconButton>
+
+        <Box>
+          <Typography variant="h6" fontWeight={800}>
+            Dashboard
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Track, plan and improve your financial health
+          </Typography>
+        </Box>
+
+        <Box sx={{ flexGrow: 1 }} />
+
+        <Box
+          sx={{
+            display: { xs: "none", md: "flex" },
+            alignItems: "center",
+            px: 2,
+            py: 0.8,
+            width: 320,
+            borderRadius: 4,
+            backgroundColor: alpha(theme.palette.text.primary, 0.06),
+          }}
+        >
+          <SearchIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} />
+          <InputBase placeholder="Search transactions, budgets..." fullWidth />
+        </Box>
+
+        <Tooltip title="Notifications">
+          <IconButton>
+            <Badge badgeContent={3} color="error">
+              <NotificationsNoneIcon />
+            </Badge>
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Toggle theme">
+          <IconButton onClick={onThemeToggle}>
+            {mode === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Account">
+          <IconButton onClick={(event) => setAnchorEl(event.currentTarget)}>
+            <Avatar
+              sx={{
+                width: 38,
+                height: 38,
+                fontWeight: 800,
+                background: "linear-gradient(135deg, #2563eb, #7c3aed)",
+              }}
+            >
+              {initials}
+            </Avatar>
+          </IconButton>
+        </Tooltip>
+
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={() => setAnchorEl(null)}
+          PaperProps={{
+            sx: {
+              mt: 1.5,
+              minWidth: 230,
+              borderRadius: 3,
+            },
+          }}
+        >
+          <Box px={2} py={1.5}>
+            <Typography fontWeight={800}>Signed in as</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {userEmail}
+            </Typography>
+          </Box>
+
+          <MenuItem onClick={() => setAnchorEl(null)}>
+            <PersonIcon fontSize="small" sx={{ mr: 1 }} />
+            Profile
+          </MenuItem>
+
+          <MenuItem onClick={logout}>
+            <LogoutIcon fontSize="small" sx={{ mr: 1 }} />
+            Logout
+          </MenuItem>
+        </Menu>
+      </Toolbar>
+    </AppBar>
+  );
+};
+
+export default Navbar;
+--------------------------------------------
+import { Box, Toolbar } from "@mui/material";
+import { Outlet } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { createTheme, ThemeProvider, CssBaseline } from "@mui/material";
+
+import Sidebar from "../components/sidebar/Sidebar";
+import Navbar from "../components/navbar/Navbar";
+import useAuth from "../hooks/useAuth";
+
+const DashboardLayout = () => {
+  const { user } = useAuth();
+
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mode, setMode] = useState(localStorage.getItem("themeMode") || "light");
+
+  const currentRole = user?.role || "USER";
+
+  const theme = useMemo(
+    () =>
+      createTheme({
+        palette: {
+          mode,
+          primary: {
+            main: "#2563eb",
+          },
+          secondary: {
+            main: "#7c3aed",
+          },
+          background: {
+            default: mode === "dark" ? "#020617" : "#f8fafc",
+            paper: mode === "dark" ? "#0f172a" : "#ffffff",
+          },
+        },
+        shape: {
+          borderRadius: 14,
+        },
+        typography: {
+          fontFamily: "Inter, Arial, sans-serif",
+          h4: {
+            fontWeight: 800,
+          },
+          h5: {
+            fontWeight: 800,
+          },
+          h6: {
+            fontWeight: 800,
+          },
+        },
+        components: {
+          MuiCard: {
+            styleOverrides: {
+              root: {
+                borderRadius: 22,
+              },
+            },
+          },
+          MuiButton: {
+            styleOverrides: {
+              root: {
+                textTransform: "none",
+                fontWeight: 700,
+                borderRadius: 12,
+              },
+            },
+          },
+        },
+      }),
+    [mode]
+  );
+
+  const handleThemeToggle = () => {
+    const nextMode = mode === "light" ? "dark" : "light";
+    setMode(nextMode);
+    localStorage.setItem("themeMode", nextMode);
+  };
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+
+      <Box sx={{ display: "flex", minHeight: "100vh" }}>
+        <Navbar
+          onMenuClick={() => setMobileOpen(true)}
+          onThemeToggle={handleThemeToggle}
+          mode={mode}
+        />
+
+        <Sidebar
+          mobileOpen={mobileOpen}
+          onClose={() => setMobileOpen(false)}
+          currentRole={currentRole}
+        />
+
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            width: { lg: "calc(100% - 280px)" },
+            minHeight: "100vh",
+            background:
+              mode === "dark"
+                ? "radial-gradient(circle at top right, rgba(37,99,235,0.16), transparent 30%), #020617"
+                : "radial-gradient(circle at top right, rgba(37,99,235,0.10), transparent 30%), #f8fafc",
+          }}
+        >
+          <Toolbar />
+
+          <Box sx={{ p: { xs: 2, md: 3 } }}>
+            <Outlet />
+          </Box>
+        </Box>
+      </Box>
+    </ThemeProvider>
+  );
+};
+
+export default DashboardLayout;
+---------------------------------------------
+import { Box, Breadcrumbs, Button, Typography } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import NavigateNextIcon from "@mui/icons-material/NavigateNext";
+
+const PageHeader = ({
+  title,
+  subtitle,
+  actionText,
+  onAction,
+  breadcrumbs = [],
+}) => {
   return (
     <Box
       sx={{
-        minHeight: "100vh",
-        background:
-          theme.palette.mode === "dark"
-            ? "linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #111827 100%)"
-            : "linear-gradient(135deg, #2563eb 0%, #7c3aed 50%, #ec4899 100%)",
+        mb: 3,
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        px: 2,
-        py: 4,
+        justifyContent: "space-between",
+        gap: 2,
+        flexDirection: { xs: "column", md: "row" },
+        alignItems: { xs: "flex-start", md: "center" },
       }}
     >
-      <Container maxWidth="lg">
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", md: "1fr 450px" },
-            gap: 4,
-            alignItems: "center",
-          }}
-        >
-          <Box sx={{ color: "white", display: { xs: "none", md: "block" } }}>
-            <Typography variant="h3" fontWeight={800} mb={2}>
-              Budget Management System
-            </Typography>
-
-            <Typography variant="h6" sx={{ maxWidth: 560, opacity: 0.9 }}>
-              Manage income, expenses, savings, budgets, analytics and AI-based
-              financial insights from one secure platform.
-            </Typography>
-
-            <Box sx={{ mt: 4 }}>
-              <Typography>✓ Secure Authentication</Typography>
-              <Typography>✓ OTP Verification</Typography>
-              <Typography>✓ Finance Dashboard</Typography>
-              <Typography>✓ AI Budget Advisor</Typography>
-            </Box>
-          </Box>
-
-          <Card
-            sx={{
-              width: "100%",
-              borderRadius: 5,
-              boxShadow: "0 30px 80px rgba(0,0,0,0.25)",
-            }}
+      <Box>
+        {breadcrumbs.length > 0 && (
+          <Breadcrumbs
+            separator={<NavigateNextIcon fontSize="small" />}
+            sx={{ mb: 1 }}
           >
-            <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
-              <Typography variant="h4" fontWeight={800} textAlign="center">
-                {title}
+            {breadcrumbs.map((item) => (
+              <Typography key={item} variant="body2" color="text.secondary">
+                {item}
               </Typography>
+            ))}
+          </Breadcrumbs>
+        )}
 
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                textAlign="center"
-                mt={1}
-                mb={3}
-              >
-                {subtitle}
-              </Typography>
+        <Typography variant="h4" fontWeight={900}>
+          {title}
+        </Typography>
 
-              {children}
-            </CardContent>
-          </Card>
-        </Box>
-      </Container>
+        {subtitle && (
+          <Typography color="text.secondary" mt={0.5}>
+            {subtitle}
+          </Typography>
+        )}
+      </Box>
+
+      {actionText && (
+        <Button variant="contained" startIcon={<AddIcon />} onClick={onAction}>
+          {actionText}
+        </Button>
+      )}
     </Box>
   );
 };
 
-export default AuthLayout;
--------------------------------
-import { Navigate } from "react-router-dom";
-import useAuth from "../hooks/useAuth";
-
-const PublicRoute = ({ children }) => {
-  const { isAuthenticated } = useAuth();
-
-  if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  return children;
-};
-
-export default PublicRoute;
-----------------------------------
-import { Navigate } from "react-router-dom";
-import useAuth from "../hooks/useAuth";
-
-const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated } = useAuth();
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return children;
-};
-
-export default ProtectedRoute;
--------------------------------------
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+export default PageHeader;
+-------------------------------------------------
 import {
-  Alert,
   Box,
-  Button,
-  CircularProgress,
-  TextField,
+  Card,
+  CardContent,
+  Chip,
+  Grid,
+  LinearProgress,
+  Stack,
   Typography,
 } from "@mui/material";
-import AuthLayout from "../../layouts/AuthLayout";
-import { registerUser, sendOtp } from "../../api/authApi";
-
-const Register = () => {
-  const navigate = useNavigate();
-
-  const [formData, setFormData] = useState({
-    first_name: "",
-    last_name: "",
-    email: "",
-    phone: "",
-    password: "",
-  });
-
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleChange = (event) => {
-    setFormData({
-      ...formData,
-      [event.target.name]: event.target.value,
-    });
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setError("");
-    setLoading(true);
-
-    try {
-      const registerResponse = await registerUser(formData);
-
-      await sendOtp({
-        email: formData.email,
-      });
-
-      navigate("/verify-otp", {
-        state: {
-          user_id: registerResponse.user_id,
-          email: formData.email,
-        },
-      });
-    } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-          err.response?.data?.message ||
-          "Registration failed"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <AuthLayout
-      title="Create Account"
-      subtitle="Register and verify your email to continue"
-    >
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Box component="form" onSubmit={handleSubmit}>
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-            gap: 2,
-          }}
-        >
-          <TextField
-            label="First Name"
-            name="first_name"
-            value={formData.first_name}
-            onChange={handleChange}
-            required
-            fullWidth
-          />
-
-          <TextField
-            label="Last Name"
-            name="last_name"
-            value={formData.last_name}
-            onChange={handleChange}
-            required
-            fullWidth
-          />
-        </Box>
-
-        <TextField
-          label="Email Address"
-          name="email"
-          type="email"
-          value={formData.email}
-          onChange={handleChange}
-          margin="normal"
-          required
-          fullWidth
-        />
-
-        <TextField
-          label="Phone Number"
-          name="phone"
-          value={formData.phone}
-          onChange={handleChange}
-          margin="normal"
-          required
-          fullWidth
-        />
-
-        <TextField
-          label="Password"
-          name="password"
-          type="password"
-          value={formData.password}
-          onChange={handleChange}
-          margin="normal"
-          required
-          fullWidth
-        />
-
-        <Button
-          type="submit"
-          variant="contained"
-          fullWidth
-          size="large"
-          disabled={loading}
-          sx={{ mt: 3, py: 1.4, borderRadius: 2 }}
-        >
-          {loading ? <CircularProgress size={24} color="inherit" /> : "Register"}
-        </Button>
-      </Box>
-
-      <Typography textAlign="center" mt={3}>
-        Already have an account? <Link to="/login">Login</Link>
-      </Typography>
-    </AuthLayout>
-  );
-};
-
-export default Register;
---------------------------------
-import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  TextField,
-  Typography,
-} from "@mui/material";
-import AuthLayout from "../../layouts/AuthLayout";
-import { sendOtp, verifyOtp } from "../../api/authApi";
-
-const VerifyOtp = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  const [userId] = useState(location.state?.user_id || "");
-  const [email] = useState(location.state?.email || "");
-  const [otpCode, setOtpCode] = useState("");
-
-  const [success, setSuccess] = useState(
-    "OTP has been sent to your registered email."
-  );
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [resendLoading, setResendLoading] = useState(false);
-
-  const handleVerifyOtp = async (event) => {
-    event.preventDefault();
-    setError("");
-    setSuccess("");
-
-    if (!userId) {
-      setError("User ID missing. Please register again.");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      await verifyOtp({
-        user_id: Number(userId),
-        otp_code: otpCode,
-      });
-
-      setSuccess("OTP verified successfully. Redirecting to login...");
-
-      setTimeout(() => {
-        navigate("/login");
-      }, 1200);
-    } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-          err.response?.data?.message ||
-          "OTP verification failed"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResendOtp = async () => {
-    setError("");
-    setSuccess("");
-
-    if (!email) {
-      setError("Email missing. Please register again.");
-      return;
-    }
-
-    setResendLoading(true);
-
-    try {
-      await sendOtp({ email });
-      setSuccess("OTP resent successfully.");
-    } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-          err.response?.data?.message ||
-          "Failed to resend OTP"
-      );
-    } finally {
-      setResendLoading(false);
-    }
-  };
-
-  return (
-    <AuthLayout title="Verify OTP" subtitle="Enter the OTP sent to your email">
-      {email && (
-        <Typography textAlign="center" color="text.secondary" mb={2}>
-          Email: {email}
-        </Typography>
-      )}
-
-      {success && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          {success}
-        </Alert>
-      )}
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Box component="form" onSubmit={handleVerifyOtp}>
-        <TextField
-          label="OTP Code"
-          value={otpCode}
-          onChange={(e) => setOtpCode(e.target.value)}
-          required
-          fullWidth
-        />
-
-        <Button
-          type="submit"
-          variant="contained"
-          fullWidth
-          size="large"
-          disabled={loading}
-          sx={{ mt: 3, py: 1.4, borderRadius: 2 }}
-        >
-          {loading ? <CircularProgress size={24} color="inherit" /> : "Verify OTP"}
-        </Button>
-      </Box>
-
-      <Button
-        variant="text"
-        fullWidth
-        disabled={resendLoading}
-        onClick={handleResendOtp}
-        sx={{ mt: 2 }}
-      >
-        {resendLoading ? "Sending OTP..." : "Resend OTP"}
-      </Button>
-
-      <Typography textAlign="center" mt={2}>
-        Wrong email? <Link to="/register">Register again</Link>
-      </Typography>
-    </AuthLayout>
-  );
-};
-
-export default VerifyOtp;
--------------------------------
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  TextField,
-  Typography,
-} from "@mui/material";
-import AuthLayout from "../../layouts/AuthLayout";
-import useAuth from "../../hooks/useAuth";
-
-const Login = () => {
-  const navigate = useNavigate();
-  const { login } = useAuth();
-
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  });
-
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleChange = (event) => {
-    setFormData({
-      ...formData,
-      [event.target.name]: event.target.value,
-    });
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setError("");
-    setLoading(true);
-
-    try {
-      await login({
-        email: formData.email,
-        password: formData.password,
-      });
-
-      navigate("/dashboard");
-    } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-          err.response?.data?.message ||
-          err.message ||
-          "Login failed"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <AuthLayout title="Welcome Back" subtitle="Login to continue to dashboard">
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Box component="form" onSubmit={handleSubmit}>
-        <TextField
-          label="Email Address"
-          name="email"
-          type="email"
-          value={formData.email}
-          onChange={handleChange}
-          required
-          fullWidth
-          margin="normal"
-        />
-
-        <TextField
-          label="Password"
-          name="password"
-          type="password"
-          value={formData.password}
-          onChange={handleChange}
-          required
-          fullWidth
-          margin="normal"
-        />
-
-        <Box textAlign="right" mt={1}>
-          <Link to="/forgot-password">Forgot Password?</Link>
-        </Box>
-
-        <Button
-          type="submit"
-          variant="contained"
-          fullWidth
-          size="large"
-          disabled={loading}
-          sx={{ mt: 3, py: 1.4, borderRadius: 2 }}
-        >
-          {loading ? <CircularProgress size={24} color="inherit" /> : "Login"}
-        </Button>
-      </Box>
-
-      <Typography textAlign="center" mt={3}>
-        Don&apos;t have an account? <Link to="/register">Register</Link>
-      </Typography>
-    </AuthLayout>
-  );
-};
-
-export default Login;
---------------------------------
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  TextField,
-  Typography,
-} from "@mui/material";
-import AuthLayout from "../../layouts/AuthLayout";
-import { forgotPassword } from "../../api/authApi";
-
-const ForgotPassword = () => {
-  const navigate = useNavigate();
-
-  const [email, setEmail] = useState("");
-  const [success, setSuccess] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleForgotPassword = async (event) => {
-    event.preventDefault();
-    setError("");
-    setSuccess("");
-    setLoading(true);
-
-    try {
-      const response = await forgotPassword({ email });
-
-      setSuccess("Password reset request created successfully.");
-
-      setTimeout(() => {
-        navigate("/reset-password", {
-          state: {
-            email,
-            token: response?.token || "",
-          },
-        });
-      }, 1000);
-    } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-          err.response?.data?.message ||
-          "Forgot password request failed"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <AuthLayout
-      title="Forgot Password"
-      subtitle="Enter your email to receive reset token"
-    >
-      {success && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          {success}
-        </Alert>
-      )}
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Box component="form" onSubmit={handleForgotPassword}>
-        <TextField
-          label="Email Address"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          fullWidth
-          margin="normal"
-        />
-
-        <Button
-          type="submit"
-          variant="contained"
-          fullWidth
-          size="large"
-          disabled={loading}
-          sx={{ mt: 3, py: 1.4, borderRadius: 2 }}
-        >
-          {loading ? <CircularProgress size={24} color="inherit" /> : "Continue"}
-        </Button>
-      </Box>
-
-      <Typography textAlign="center" mt={3}>
-        Remember password? <Link to="/login">Login</Link>
-      </Typography>
-    </AuthLayout>
-  );
-};
-
-export default ForgotPassword;
-------------------------------------
-import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  TextField,
-  Typography,
-} from "@mui/material";
-import AuthLayout from "../../layouts/AuthLayout";
-import { resetPassword } from "../../api/authApi";
-
-const ResetPassword = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  const [token, setToken] = useState(location.state?.token || "");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-
-  const [success, setSuccess] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleResetPassword = async (event) => {
-    event.preventDefault();
-    setError("");
-    setSuccess("");
-
-    if (!token) {
-      setError("Reset token is required.");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setError("New password and confirm password do not match.");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      await resetPassword({
-        token,
-        new_password: newPassword,
-      });
-
-      setSuccess("Password reset successful. Redirecting to login...");
-
-      setTimeout(() => {
-        navigate("/login");
-      }, 1200);
-    } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-          err.response?.data?.message ||
-          "Password reset failed"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <AuthLayout
-      title="Reset Password"
-      subtitle="Enter your reset token and new password"
-    >
-      {success && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          {success}
-        </Alert>
-      )}
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Box component="form" onSubmit={handleResetPassword}>
-        <TextField
-          label="Reset Token"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          required
-          fullWidth
-          margin="normal"
-        />
-
-        <TextField
-          label="New Password"
-          type="password"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          required
-          fullWidth
-          margin="normal"
-        />
-
-        <TextField
-          label="Confirm Password"
-          type="password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          required
-          fullWidth
-          margin="normal"
-        />
-
-        <Button
-          type="submit"
-          variant="contained"
-          fullWidth
-          size="large"
-          disabled={loading}
-          sx={{ mt: 3, py: 1.4, borderRadius: 2 }}
-        >
-          {loading ? (
-            <CircularProgress size={24} color="inherit" />
-          ) : (
-            "Reset Password"
-          )}
-        </Button>
-      </Box>
-
-      <Typography textAlign="center" mt={3}>
-        Back to <Link to="/login">Login</Link>
-      </Typography>
-    </AuthLayout>
-  );
-};
-
-export default ResetPassword;
-------------------------------------
-import { Box, Button, Typography } from "@mui/material";
-import useAuth from "../../hooks/useAuth";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import SavingsIcon from "@mui/icons-material/Savings";
+import PageHeader from "../../components/common/PageHeader";
+
+const statCards = [
+  {
+    title: "Total Income",
+    value: "Connect API",
+    icon: <TrendingUpIcon />,
+    color: "#16a34a",
+  },
+  {
+    title: "Total Expenses",
+    value: "Connect API",
+    icon: <ReceiptLongIcon />,
+    color: "#dc2626",
+  },
+  {
+    title: "Monthly Budget",
+    value: "Connect API",
+    icon: <AccountBalanceWalletIcon />,
+    color: "#2563eb",
+  },
+  {
+    title: "Savings Goals",
+    value: "Connect API",
+    icon: <SavingsIcon />,
+    color: "#7c3aed",
+  },
+];
 
 const Dashboard = () => {
-  const { logout, user } = useAuth();
-
   return (
-    <Box sx={{ p: 4 }}>
-      <Typography variant="h4" fontWeight={800}>
-        Budget Management Dashboard
-      </Typography>
+    <Box>
+      <PageHeader
+        title="Financial Dashboard"
+        subtitle="A complete overview of your income, expenses, budgets and savings."
+        breadcrumbs={["Overview", "Dashboard"]}
+      />
 
-      <Typography mt={2}>
-        Login successful. Welcome {user?.email || "User"}.
-      </Typography>
+      <Grid container spacing={3}>
+        {statCards.map((card) => (
+          <Grid item xs={12} sm={6} lg={3} key={card.title}>
+            <Card
+              elevation={0}
+              sx={{
+                border: "1px solid",
+                borderColor: "divider",
+                height: "100%",
+              }}
+            >
+              <CardContent>
+                <Stack direction="row" justifyContent="space-between">
+                  <Box>
+                    <Typography color="text.secondary" fontWeight={700}>
+                      {card.title}
+                    </Typography>
+                    <Typography variant="h5" mt={1}>
+                      {card.value}
+                    </Typography>
+                  </Box>
 
-      <Button variant="contained" color="error" sx={{ mt: 3 }} onClick={logout}>
-        Logout
-      </Button>
+                  <Box
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 3,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "white",
+                      background: card.color,
+                    }}
+                  >
+                    {card.icon}
+                  </Box>
+                </Stack>
+
+                <Chip
+                  label="Waiting for backend data"
+                  size="small"
+                  sx={{ mt: 2 }}
+                />
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+
+        <Grid item xs={12} lg={8}>
+          <Card
+            elevation={0}
+            sx={{
+              border: "1px solid",
+              borderColor: "divider",
+              minHeight: 350,
+            }}
+          >
+            <CardContent>
+              <Typography variant="h6">Spending Trend</Typography>
+              <Typography color="text.secondary" mb={3}>
+                Chart will be connected with analytics API.
+              </Typography>
+
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="body2" fontWeight={700}>
+                    Income vs Expense API
+                  </Typography>
+                  <LinearProgress variant="determinate" value={65} sx={{ mt: 1 }} />
+                </Box>
+
+                <Box>
+                  <Typography variant="body2" fontWeight={700}>
+                    Budget Usage API
+                  </Typography>
+                  <LinearProgress
+                    color="secondary"
+                    variant="determinate"
+                    value={42}
+                    sx={{ mt: 1 }}
+                  />
+                </Box>
+
+                <Box>
+                  <Typography variant="body2" fontWeight={700}>
+                    Savings Goal API
+                  </Typography>
+                  <LinearProgress
+                    color="success"
+                    variant="determinate"
+                    value={78}
+                    sx={{ mt: 1 }}
+                  />
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} lg={4}>
+          <Card
+            elevation={0}
+            sx={{
+              border: "1px solid",
+              borderColor: "divider",
+              minHeight: 350,
+            }}
+          >
+            <CardContent>
+              <Typography variant="h6">AI Financial Advisor</Typography>
+              <Typography color="text.secondary" mt={1}>
+                AI recommendations will appear here after connecting GenAI APIs.
+              </Typography>
+
+              <Box
+                sx={{
+                  mt: 3,
+                  p: 2,
+                  borderRadius: 3,
+                  backgroundColor: "action.hover",
+                }}
+              >
+                <Typography fontWeight={800}>Next Step</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Connect `/dashboard/{user_id}` and `/financial-health/{user_id}`
+                  APIs.
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
     </Box>
   );
 };
 
 export default Dashboard;
---------------------------------
+----------------------------------------------------
+import { Box, Card, CardContent, Chip, Typography } from "@mui/material";
+import PageHeader from "../../components/common/PageHeader";
+
+const ComingSoonPage = ({ title, subtitle }) => {
+  return (
+    <Box>
+      <PageHeader
+        title={title}
+        subtitle={subtitle}
+        breadcrumbs={["Budget Management", title]}
+      />
+
+      <Card
+        elevation={0}
+        sx={{
+          border: "1px solid",
+          borderColor: "divider",
+          minHeight: 300,
+        }}
+      >
+        <CardContent>
+          <Chip label="UI module ready for development" color="primary" />
+
+          <Typography variant="h5" mt={3} fontWeight={900}>
+            {title}
+          </Typography>
+
+          <Typography color="text.secondary" mt={1}>
+            This module will be connected with backend APIs in the next steps.
+          </Typography>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+};
+
+export default ComingSoonPage;
+----------------------------------------------
 import { Navigate } from "react-router-dom";
 
 import Login from "../pages/auth/Login";
@@ -977,7 +872,9 @@ import VerifyOtp from "../pages/auth/VerifyOtp";
 import ForgotPassword from "../pages/auth/ForgotPassword";
 import ResetPassword from "../pages/auth/ResetPassword";
 
+import DashboardLayout from "../layouts/DashboardLayout";
 import Dashboard from "../pages/dashboard/Dashboard";
+import ComingSoonPage from "../pages/common/ComingSoonPage";
 
 import PublicRoute from "../routes/PublicRoute";
 import ProtectedRoute from "../routes/ProtectedRoute";
@@ -987,6 +884,7 @@ const routes = [
     path: "/",
     element: <Navigate to="/dashboard" replace />,
   },
+
   {
     path: "/login",
     element: (
@@ -1027,89 +925,162 @@ const routes = [
       </PublicRoute>
     ),
   },
+
   {
-    path: "/dashboard",
+    path: "/",
     element: (
       <ProtectedRoute>
-        <Dashboard />
+        <DashboardLayout />
       </ProtectedRoute>
     ),
+    children: [
+      {
+        path: "dashboard",
+        element: <Dashboard />,
+      },
+      {
+        path: "income",
+        element: (
+          <ComingSoonPage
+            title="Income Tracking"
+            subtitle="Manage salary, business income, passive income and other sources."
+          />
+        ),
+      },
+      {
+        path: "expenses",
+        element: (
+          <ComingSoonPage
+            title="Expense Tracking"
+            subtitle="Track daily spending, categories and monthly expense patterns."
+          />
+        ),
+      },
+      {
+        path: "budgets",
+        element: (
+          <ComingSoonPage
+            title="Budget Planning"
+            subtitle="Create monthly budgets and monitor category-wise usage."
+          />
+        ),
+      },
+      {
+        path: "savings",
+        element: (
+          <ComingSoonPage
+            title="Savings Goals"
+            subtitle="Plan goals, track progress and stay financially disciplined."
+          />
+        ),
+      },
+      {
+        path: "recurring",
+        element: (
+          <ComingSoonPage
+            title="Recurring Transactions"
+            subtitle="Manage repeated income, EMI, rent and subscription transactions."
+          />
+        ),
+      },
+      {
+        path: "categories",
+        element: (
+          <ComingSoonPage
+            title="Category Management"
+            subtitle="Organize income and expense categories."
+          />
+        ),
+      },
+      {
+        path: "analytics",
+        element: (
+          <ComingSoonPage
+            title="Analytics"
+            subtitle="View pie charts, bar charts, trends and financial health score."
+          />
+        ),
+      },
+      {
+        path: "notifications",
+        element: (
+          <ComingSoonPage
+            title="Notifications"
+            subtitle="View budget alerts, reminders and system notifications."
+          />
+        ),
+      },
+      {
+        path: "ai/budget-advisor",
+        element: (
+          <ComingSoonPage
+            title="AI Budget Advisor"
+            subtitle="Get AI-powered budget advice and savings recommendations."
+          />
+        ),
+      },
+      {
+        path: "admin/users",
+        element: (
+          <ComingSoonPage
+            title="User Management"
+            subtitle="Admin module for managing users."
+          />
+        ),
+      },
+      {
+        path: "admin/roles",
+        element: (
+          <ComingSoonPage
+            title="Role Management"
+            subtitle="Admin module for roles and permissions."
+          />
+        ),
+      },
+      {
+        path: "admin/audit-logs",
+        element: (
+          <ComingSoonPage
+            title="Audit Logs"
+            subtitle="Track user actions and security activities."
+          />
+        ),
+      },
+      {
+        path: "admin",
+        element: (
+          <ComingSoonPage
+            title="Admin Panel"
+            subtitle="Central admin area for system configuration."
+          />
+        ),
+      },
+    ],
   },
+
   {
     path: "*",
-    element: <Navigate to="/login" replace />,
+    element: <Navigate to="/dashboard" replace />,
   },
 ];
 
 export default routes;
--------------------------------
+-----------------------------------------
 import { useRoutes } from "react-router-dom";
 import routes from "./routes";
 
 const App = () => {
-  const element = useRoutes(routes);
-  return element;
+  return useRoutes(routes);
 };
 
 export default App;
--------------------------------
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import { CssBaseline } from "@mui/material";
+----------------------------------
+const userData = {
+  email: loginData.email,
+  role: response?.role || response?.user?.role || "USER",
+};
 
-import App from "./app/App";
-import { AuthProvider } from "./context/AuthContext";
 
-import "./styles/global.css";
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <CssBaseline />
-        <App />
-      </AuthProvider>
-    </BrowserRouter>
-  </React.StrictMode>
-);
------------------------
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import { CssBaseline } from "@mui/material";
 
-import App from "./app/App";
-import { AuthProvider } from "./context/AuthContext";
 
-import "./styles/global.css";
-
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <CssBaseline />
-        <App />
-      </AuthProvider>
-    </BrowserRouter>
-  </React.StrictMode>
-);
----------------------
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-a {
-  color: #2563eb;
-  text-decoration: none;
-  font-weight: 600;
-}
-
-a:hover {
-  text-decoration: underline;
-}
