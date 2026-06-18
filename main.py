@@ -1,3 +1,25 @@
+import api from "./axios";
+
+export const getExpenses = async () => {
+  const response = await api.get("/expense/");
+  return response.data;
+};
+
+export const createExpense = async (data) => {
+  const response = await api.post("/expense/", data);
+  return response.data;
+};
+
+export const updateExpense = async (expenseId, data) => {
+  const response = await api.put(`/expense/${expenseId}`, data);
+  return response.data;
+};
+
+export const deleteExpense = async (expenseId) => {
+  const response = await api.delete(`/expense/${expenseId}`);
+  return response.data;
+};
+--------------------------------------------
 export const decodeJwtPayload = (token) => {
   try {
     if (!token) return null;
@@ -6,12 +28,11 @@ export const decodeJwtPayload = (token) => {
     if (!base64Url) return null;
 
     const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+
     const jsonPayload = decodeURIComponent(
       atob(base64)
         .split("")
-        .map((char) => {
-          return `%${`00${char.charCodeAt(0).toString(16)}`.slice(-2)}`;
-        })
+        .map((char) => `%${`00${char.charCodeAt(0).toString(16)}`.slice(-2)}`)
         .join("")
     );
 
@@ -27,40 +48,20 @@ export const getUserIdFromToken = () => {
 
   return payload?.user_id || null;
 };
---------------------------------------
-import api from "./axios";
 
-export const getIncome = async () => {
-  const response = await api.get("/income/");
-  return response.data;
-};
 
-export const createIncome = async (data) => {
-  const response = await api.post("/income/", data);
-  return response.data;
-};
-
-export const updateIncome = async (incomeId, data) => {
-  const response = await api.put(`/income/${incomeId}`, data);
-  return response.data;
-};
-
-export const deleteIncome = async (incomeId) => {
-  const response = await api.delete(`/income/${incomeId}`);
-  return response.data;
-};
----------------------------------
+-------------------------------------------
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  createIncome,
-  deleteIncome,
-  getIncome,
-  updateIncome,
-} from "../api/incomeApi";
+  createExpense,
+  deleteExpense,
+  getExpenses,
+  updateExpense,
+} from "../api/expenseApi";
 import { getUserIdFromToken } from "../utils/jwt";
 
-const useIncome = () => {
-  const [incomeList, setIncomeList] = useState([]);
+const useExpense = () => {
+  const [expenseList, setExpenseList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -68,31 +69,31 @@ const useIncome = () => {
 
   const userId = useMemo(() => getUserIdFromToken(), []);
 
-  const fetchIncome = useCallback(async () => {
+  const fetchExpenses = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const data = await getIncome();
+      const data = await getExpenses();
       const list = Array.isArray(data) ? data : [];
 
-      const userSpecificIncome = userId
+      const userSpecificExpenses = userId
         ? list.filter((item) => Number(item.user_id) === Number(userId))
         : list;
 
-      setIncomeList(userSpecificIncome);
+      setExpenseList(userSpecificExpenses);
     } catch (err) {
       setError(
         err.response?.data?.detail ||
           err.response?.data?.message ||
-          "Failed to load income records"
+          "Failed to load expense records"
       );
     } finally {
       setLoading(false);
     }
   }, [userId]);
 
-  const addIncome = async (payload) => {
+  const addExpense = async (payload) => {
     setSaving(true);
     setError("");
 
@@ -101,21 +102,21 @@ const useIncome = () => {
         throw new Error("User ID not found in token. Please login again.");
       }
 
-      await createIncome({
+      await createExpense({
         user_id: Number(userId),
         category_id: Number(payload.category_id),
         amount: Number(payload.amount),
         description: payload.description,
-        income_date: payload.income_date,
+        expense_date: payload.expense_date,
       });
 
-      await fetchIncome();
+      await fetchExpenses();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
         err.message ||
-        "Failed to create income";
+        "Failed to create expense";
 
       setError(message);
       throw new Error(message);
@@ -124,24 +125,24 @@ const useIncome = () => {
     }
   };
 
-  const editIncome = async (incomeId, payload) => {
+  const editExpense = async (expenseId, payload) => {
     setSaving(true);
     setError("");
 
     try {
-      await updateIncome(incomeId, {
+      await updateExpense(expenseId, {
         category_id: Number(payload.category_id),
         amount: Number(payload.amount),
         description: payload.description,
-        income_date: payload.income_date,
+        expense_date: payload.expense_date,
       });
 
-      await fetchIncome();
+      await fetchExpenses();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
-        "Failed to update income";
+        "Failed to update expense";
 
       setError(message);
       throw new Error(message);
@@ -150,18 +151,18 @@ const useIncome = () => {
     }
   };
 
-  const removeIncome = async (incomeId) => {
+  const removeExpense = async (expenseId) => {
     setDeleting(true);
     setError("");
 
     try {
-      await deleteIncome(incomeId);
-      await fetchIncome();
+      await deleteExpense(expenseId);
+      await fetchExpenses();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
-        "Failed to delete income";
+        "Failed to delete expense";
 
       setError(message);
       throw new Error(message);
@@ -171,25 +172,25 @@ const useIncome = () => {
   };
 
   useEffect(() => {
-    fetchIncome();
-  }, [fetchIncome]);
+    fetchExpenses();
+  }, [fetchExpenses]);
 
   return {
-    incomeList,
+    expenseList,
     loading,
     saving,
     deleting,
     error,
     userId,
-    fetchIncome,
-    addIncome,
-    editIncome,
-    removeIncome,
+    fetchExpenses,
+    addExpense,
+    editExpense,
+    removeExpense,
   };
 };
 
-export default useIncome;
---------------------------------
+export default useExpense;
+--------------------------------------------
 import { useMemo, useState } from "react";
 import {
   Alert,
@@ -208,6 +209,7 @@ import {
   IconButton,
   InputAdornment,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Select,
   Stack,
@@ -215,18 +217,22 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import AddIcon from "@mui/icons-material/Add";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CurrencyRupeeIcon from "@mui/icons-material/CurrencyRupee";
+import CategoryIcon from "@mui/icons-material/Category";
 import PageHeader from "../../components/common/PageHeader";
-import useIncome from "../../hooks/useIncome";
+import useExpense from "../../hooks/useExpense";
 import useCategories from "../../hooks/useCategories";
 
-const getToday = () => {
-  return new Date().toISOString().slice(0, 10);
+const getToday = () => new Date().toISOString().slice(0, 10);
+
+const getCurrentMonthValue = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
 const formatCurrency = (value) => {
@@ -247,49 +253,54 @@ const formatDate = (value) => {
   }).format(new Date(value));
 };
 
-const IncomePage = () => {
+const ExpensePage = () => {
   const {
-    incomeList,
+    expenseList,
     loading,
     saving,
     deleting,
     error,
-    fetchIncome,
-    addIncome,
-    editIncome,
-    removeIncome,
-  } = useIncome();
+    fetchExpenses,
+    addExpense,
+    editExpense,
+    removeExpense,
+  } = useExpense();
 
   const { categories, loading: categoryLoading } = useCategories();
 
-  const incomeCategories = useMemo(() => {
-    return categories.filter((category) => category.category_type === "INCOME");
+  const expenseCategories = useMemo(() => {
+    return categories.filter(
+      (category) => category.category_type?.toUpperCase().trim() === "EXPENSE"
+    );
   }, [categories]);
 
   const [open, setOpen] = useState(false);
-  const [editingIncome, setEditingIncome] = useState(null);
+  const [editingExpense, setEditingExpense] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [formError, setFormError] = useState("");
+
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [monthFilter, setMonthFilter] = useState("ALL");
 
   const [formData, setFormData] = useState({
     category_id: "",
     amount: "",
     description: "",
-    income_date: getToday(),
+    expense_date: getToday(),
   });
 
-  const totalIncome = useMemo(() => {
-    return incomeList.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  }, [incomeList]);
+  const totalExpense = useMemo(() => {
+    return expenseList.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  }, [expenseList]);
 
-  const currentMonthIncome = useMemo(() => {
+  const currentMonthExpense = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    return incomeList.reduce((sum, item) => {
-      const date = new Date(item.income_date);
+    return expenseList.reduce((sum, item) => {
+      const date = new Date(item.expense_date);
 
       if (
         date.getMonth() === currentMonth &&
@@ -300,32 +311,60 @@ const IncomePage = () => {
 
       return sum;
     }, 0);
-  }, [incomeList]);
+  }, [expenseList]);
 
-  const highestIncome = useMemo(() => {
-    if (incomeList.length === 0) return 0;
+  const highestExpense = useMemo(() => {
+    if (expenseList.length === 0) return 0;
+    return Math.max(...expenseList.map((item) => Number(item.amount || 0)));
+  }, [expenseList]);
 
-    return Math.max(...incomeList.map((item) => Number(item.amount || 0)));
-  }, [incomeList]);
+  const categorySpend = useMemo(() => {
+    const totals = {};
 
-  const filteredIncome = useMemo(() => {
-    return incomeList.filter((income) => {
-      const category = incomeCategories.find(
-        (item) => Number(item.category_id) === Number(income.category_id)
+    expenseList.forEach((expense) => {
+      const key = expense.category_id;
+      totals[key] = (totals[key] || 0) + Number(expense.amount || 0);
+    });
+
+    return Object.entries(totals)
+      .map(([categoryId, amount]) => ({
+        category_id: Number(categoryId),
+        category_name:
+          expenseCategories.find(
+            (category) => Number(category.category_id) === Number(categoryId)
+          )?.category_name || "Unknown Category",
+        amount,
+      }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+  }, [expenseList, expenseCategories]);
+
+  const filteredExpenses = useMemo(() => {
+    return expenseList.filter((expense) => {
+      const category = expenseCategories.find(
+        (item) => Number(item.category_id) === Number(expense.category_id)
       );
 
-      const searchValue = `${income.description || ""} ${
+      const searchableText = `${expense.description || ""} ${
         category?.category_name || ""
-      }`
-        .toLowerCase()
-        .trim();
+      }`.toLowerCase();
 
-      return searchValue.includes(search.toLowerCase());
+      const matchesSearch = searchableText.includes(search.toLowerCase());
+
+      const matchesCategory =
+        categoryFilter === "ALL" ||
+        Number(expense.category_id) === Number(categoryFilter);
+
+      const matchesMonth =
+        monthFilter === "ALL" ||
+        String(expense.expense_date || "").startsWith(monthFilter);
+
+      return matchesSearch && matchesCategory && matchesMonth;
     });
-  }, [incomeList, incomeCategories, search]);
+  }, [expenseList, expenseCategories, search, categoryFilter, monthFilter]);
 
   const getCategoryName = (categoryId) => {
-    const category = incomeCategories.find(
+    const category = expenseCategories.find(
       (item) => Number(item.category_id) === Number(categoryId)
     );
 
@@ -333,25 +372,25 @@ const IncomePage = () => {
   };
 
   const handleOpenAdd = () => {
-    setEditingIncome(null);
+    setEditingExpense(null);
     setFormError("");
     setFormData({
       category_id: "",
       amount: "",
       description: "",
-      income_date: getToday(),
+      expense_date: getToday(),
     });
     setOpen(true);
   };
 
-  const handleOpenEdit = (income) => {
-    setEditingIncome(income);
+  const handleOpenEdit = (expense) => {
+    setEditingExpense(expense);
     setFormError("");
     setFormData({
-      category_id: income.category_id || "",
-      amount: income.amount || "",
-      description: income.description || "",
-      income_date: income.income_date || getToday(),
+      category_id: expense.category_id || "",
+      amount: expense.amount || "",
+      description: expense.description || "",
+      expense_date: expense.expense_date || getToday(),
     });
     setOpen(true);
   };
@@ -359,7 +398,7 @@ const IncomePage = () => {
   const handleClose = () => {
     if (!saving) {
       setOpen(false);
-      setEditingIncome(null);
+      setEditingExpense(null);
     }
   };
 
@@ -372,7 +411,7 @@ const IncomePage = () => {
 
   const validateForm = () => {
     if (!formData.category_id) {
-      return "Please select an income category";
+      return "Please select an expense category";
     }
 
     if (!formData.amount || Number(formData.amount) <= 0) {
@@ -383,8 +422,8 @@ const IncomePage = () => {
       return "Description is required";
     }
 
-    if (!formData.income_date) {
-      return "Income date is required";
+    if (!formData.expense_date) {
+      return "Expense date is required";
     }
 
     return "";
@@ -406,13 +445,13 @@ const IncomePage = () => {
         category_id: formData.category_id,
         amount: formData.amount,
         description: formData.description.trim(),
-        income_date: formData.income_date,
+        expense_date: formData.expense_date,
       };
 
-      if (editingIncome) {
-        await editIncome(editingIncome.income_id, payload);
+      if (editingExpense) {
+        await editExpense(editingExpense.expense_id, payload);
       } else {
-        await addIncome(payload);
+        await addExpense(payload);
       }
 
       handleClose();
@@ -425,20 +464,20 @@ const IncomePage = () => {
     if (!deleteTarget) return;
 
     try {
-      await removeIncome(deleteTarget.income_id);
+      await removeExpense(deleteTarget.expense_id);
       setDeleteTarget(null);
     } catch {
-      // error is already handled in hook
+      // Hook already handles error
     }
   };
 
   return (
     <Box>
       <PageHeader
-        title="Income Tracking"
-        subtitle="Track salary, business income, freelance income, investment returns and other income sources."
-        breadcrumbs={["Finance", "Income"]}
-        actionText="Add Income"
+        title="Expense Tracking"
+        subtitle="Track daily spending, category-wise expenses and monthly outflow."
+        breadcrumbs={["Finance", "Expenses"]}
+        actionText="Add Expense"
         onAction={handleOpenAdd}
       />
 
@@ -450,14 +489,7 @@ const IncomePage = () => {
 
       <Grid container spacing={3} mb={3}>
         <Grid item xs={12} md={4}>
-          <Card
-            elevation={0}
-            sx={{
-              border: "1px solid",
-              borderColor: "divider",
-              height: "100%",
-            }}
-          >
+          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={2}>
                 <Box
@@ -469,18 +501,18 @@ const IncomePage = () => {
                     alignItems: "center",
                     justifyContent: "center",
                     color: "white",
-                    background: "linear-gradient(135deg, #16a34a, #22c55e)",
+                    background: "linear-gradient(135deg, #dc2626, #ef4444)",
                   }}
                 >
-                  <TrendingUpIcon />
+                  <ReceiptLongIcon />
                 </Box>
 
                 <Box>
                   <Typography color="text.secondary" fontWeight={700}>
-                    Total Income
+                    Total Expense
                   </Typography>
                   <Typography variant="h5" fontWeight={900}>
-                    {formatCurrency(totalIncome)}
+                    {formatCurrency(totalExpense)}
                   </Typography>
                 </Box>
               </Stack>
@@ -489,250 +521,318 @@ const IncomePage = () => {
         </Grid>
 
         <Grid item xs={12} md={4}>
-          <Card
-            elevation={0}
-            sx={{
-              border: "1px solid",
-              borderColor: "divider",
-              height: "100%",
-            }}
-          >
+          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
               <Typography color="text.secondary" fontWeight={700}>
-                Current Month Income
+                Current Month Expense
               </Typography>
-              <Typography variant="h5" fontWeight={900} color="success.main">
-                {formatCurrency(currentMonthIncome)}
+              <Typography variant="h5" fontWeight={900} color="error.main">
+                {formatCurrency(currentMonthExpense)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Income recorded for this month.
+                Expenses recorded for this month.
               </Typography>
             </CardContent>
           </Card>
         </Grid>
 
         <Grid item xs={12} md={4}>
-          <Card
-            elevation={0}
-            sx={{
-              border: "1px solid",
-              borderColor: "divider",
-              height: "100%",
-            }}
-          >
+          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
               <Typography color="text.secondary" fontWeight={700}>
-                Highest Income Entry
+                Highest Expense Entry
               </Typography>
               <Typography variant="h5" fontWeight={900}>
-                {formatCurrency(highestIncome)}
+                {formatCurrency(highestExpense)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Highest single income transaction.
+                Highest single expense transaction.
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      <Card
-        elevation={0}
-        sx={{
-          border: "1px solid",
-          borderColor: "divider",
-        }}
-      >
-        <CardContent>
-          <Stack
-            direction={{ xs: "column", md: "row" }}
-            justifyContent="space-between"
-            spacing={2}
-            mb={3}
-          >
-            <TextField
-              label="Search income"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              size="small"
-              sx={{ minWidth: { xs: "100%", md: 340 } }}
-            />
-
-            <Stack direction="row" spacing={2}>
-              <Button
-                variant="outlined"
-                startIcon={<RefreshIcon />}
-                onClick={fetchIncome}
+      <Grid container spacing={3}>
+        <Grid item xs={12} lg={8}>
+          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+            <CardContent>
+              <Stack
+                direction={{ xs: "column", md: "row" }}
+                justifyContent="space-between"
+                spacing={2}
+                mb={3}
               >
-                Refresh
-              </Button>
+                <TextField
+                  label="Search expenses"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  size="small"
+                  sx={{ minWidth: { xs: "100%", md: 280 } }}
+                />
 
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={handleOpenAdd}
-              >
-                Add Income
-              </Button>
-            </Stack>
-          </Stack>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <FormControl size="small" sx={{ minWidth: 180 }}>
+                    <InputLabel>Category</InputLabel>
+                    <Select
+                      label="Category"
+                      value={categoryFilter}
+                      onChange={(event) => setCategoryFilter(event.target.value)}
+                    >
+                      <MenuItem value="ALL">All Categories</MenuItem>
+                      {expenseCategories.map((category) => (
+                        <MenuItem
+                          key={category.category_id}
+                          value={category.category_id}
+                        >
+                          {category.category_name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
 
-          {loading || categoryLoading ? (
-            <Box display="flex" justifyContent="center" py={6}>
-              <CircularProgress />
-            </Box>
-          ) : incomeCategories.length === 0 ? (
-            <Box
-              sx={{
-                py: 8,
-                textAlign: "center",
-                border: "1px dashed",
-                borderColor: "divider",
-                borderRadius: 3,
-              }}
-            >
-              <Typography variant="h6" fontWeight={900}>
-                No income category found
-              </Typography>
-              <Typography color="text.secondary" mt={1}>
-                Please create at least one category with type INCOME before
-                adding income.
-              </Typography>
-            </Box>
-          ) : filteredIncome.length === 0 ? (
-            <Box
-              sx={{
-                py: 8,
-                textAlign: "center",
-                border: "1px dashed",
-                borderColor: "divider",
-                borderRadius: 3,
-              }}
-            >
-              <Typography variant="h6" fontWeight={900}>
-                No income records found
-              </Typography>
-              <Typography color="text.secondary" mt={1}>
-                Add your first income record to start tracking your earnings.
-              </Typography>
+                  <TextField
+                    label="Month"
+                    type="month"
+                    size="small"
+                    value={monthFilter === "ALL" ? "" : monthFilter}
+                    onChange={(event) =>
+                      setMonthFilter(event.target.value || "ALL")
+                    }
+                    InputLabelProps={{ shrink: true }}
+                  />
 
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                sx={{ mt: 3 }}
-                onClick={handleOpenAdd}
-              >
-                Add Income
-              </Button>
-            </Box>
-          ) : (
-            <Stack spacing={2}>
-              {filteredIncome.map((income) => (
-                <Card
-                  key={income.income_id}
-                  elevation={0}
+                  <Button
+                    variant="outlined"
+                    startIcon={<RefreshIcon />}
+                    onClick={fetchExpenses}
+                  >
+                    Refresh
+                  </Button>
+
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={handleOpenAdd}
+                  >
+                    Add
+                  </Button>
+                </Stack>
+              </Stack>
+
+              {loading || categoryLoading ? (
+                <Box display="flex" justifyContent="center" py={6}>
+                  <CircularProgress />
+                </Box>
+              ) : expenseCategories.length === 0 ? (
+                <Box
                   sx={{
-                    border: "1px solid",
+                    py: 8,
+                    textAlign: "center",
+                    border: "1px dashed",
                     borderColor: "divider",
-                    transition: "0.2s ease",
-                    "&:hover": {
-                      boxShadow: "0 14px 36px rgba(15, 23, 42, 0.12)",
-                      transform: "translateY(-2px)",
-                    },
+                    borderRadius: 3,
                   }}
                 >
-                  <CardContent>
-                    <Stack
-                      direction={{ xs: "column", md: "row" }}
-                      justifyContent="space-between"
-                      alignItems={{ xs: "flex-start", md: "center" }}
-                      spacing={2}
+                  <Typography variant="h6" fontWeight={900}>
+                    No expense category found
+                  </Typography>
+                  <Typography color="text.secondary" mt={1}>
+                    Please create at least one category with type EXPENSE before
+                    adding expenses.
+                  </Typography>
+                </Box>
+              ) : filteredExpenses.length === 0 ? (
+                <Box
+                  sx={{
+                    py: 8,
+                    textAlign: "center",
+                    border: "1px dashed",
+                    borderColor: "divider",
+                    borderRadius: 3,
+                  }}
+                >
+                  <Typography variant="h6" fontWeight={900}>
+                    No expense records found
+                  </Typography>
+                  <Typography color="text.secondary" mt={1}>
+                    Add your first expense to start tracking spending.
+                  </Typography>
+
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    sx={{ mt: 3 }}
+                    onClick={handleOpenAdd}
+                  >
+                    Add Expense
+                  </Button>
+                </Box>
+              ) : (
+                <Stack spacing={2}>
+                  {filteredExpenses.map((expense) => (
+                    <Card
+                      key={expense.expense_id}
+                      elevation={0}
+                      sx={{
+                        border: "1px solid",
+                        borderColor: "divider",
+                        transition: "0.2s ease",
+                        "&:hover": {
+                          boxShadow: "0 14px 36px rgba(15, 23, 42, 0.12)",
+                          transform: "translateY(-2px)",
+                        },
+                      }}
                     >
-                      <Stack direction="row" spacing={2} alignItems="center">
-                        <Box
-                          sx={{
-                            width: 46,
-                            height: 46,
-                            borderRadius: 3,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: "success.light",
-                            color: "success.contrastText",
-                          }}
+                      <CardContent>
+                        <Stack
+                          direction={{ xs: "column", md: "row" }}
+                          justifyContent="space-between"
+                          alignItems={{ xs: "flex-start", md: "center" }}
+                          spacing={2}
                         >
-                          <CurrencyRupeeIcon />
-                        </Box>
-
-                        <Box>
-                          <Typography variant="h6" fontWeight={900}>
-                            {income.description}
-                          </Typography>
-
-                          <Stack
-                            direction="row"
-                            spacing={1}
-                            alignItems="center"
-                            flexWrap="wrap"
-                            mt={0.5}
-                          >
-                            <Chip
-                              label={getCategoryName(income.category_id)}
-                              color="success"
-                              size="small"
-                            />
-
-                            <Typography
-                              variant="body2"
-                              color="text.secondary"
+                          <Stack direction="row" spacing={2} alignItems="center">
+                            <Box
+                              sx={{
+                                width: 46,
+                                height: 46,
+                                borderRadius: 3,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                backgroundColor: "error.light",
+                                color: "error.contrastText",
+                              }}
                             >
-                              {formatDate(income.income_date)}
-                            </Typography>
+                              <CurrencyRupeeIcon />
+                            </Box>
+
+                            <Box>
+                              <Typography variant="h6" fontWeight={900}>
+                                {expense.description}
+                              </Typography>
+
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                                flexWrap="wrap"
+                                mt={0.5}
+                              >
+                                <Chip
+                                  label={getCategoryName(expense.category_id)}
+                                  color="error"
+                                  size="small"
+                                />
+
+                                <Typography
+                                  variant="body2"
+                                  color="text.secondary"
+                                >
+                                  {formatDate(expense.expense_date)}
+                                </Typography>
+                              </Stack>
+                            </Box>
                           </Stack>
-                        </Box>
-                      </Stack>
 
-                      <Stack
-                        direction="row"
-                        spacing={2}
-                        alignItems="center"
-                        sx={{ width: { xs: "100%", md: "auto" } }}
-                      >
-                        <Typography
-                          variant="h6"
-                          fontWeight={900}
-                          color="success.main"
-                          sx={{ minWidth: 130 }}
+                          <Stack direction="row" spacing={2} alignItems="center">
+                            <Typography
+                              variant="h6"
+                              fontWeight={900}
+                              color="error.main"
+                              sx={{ minWidth: 130 }}
+                            >
+                              {formatCurrency(expense.amount)}
+                            </Typography>
+
+                            <Tooltip title="Edit expense">
+                              <IconButton onClick={() => handleOpenEdit(expense)}>
+                                <EditIcon />
+                              </IconButton>
+                            </Tooltip>
+
+                            <Tooltip title="Delete expense">
+                              <IconButton
+                                color="error"
+                                onClick={() => setDeleteTarget(expense)}
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} lg={4}>
+          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+            <CardContent>
+              <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+                <CategoryIcon color="primary" />
+                <Typography variant="h6" fontWeight={900}>
+                  Top Spending Categories
+                </Typography>
+              </Stack>
+
+              {categorySpend.length === 0 ? (
+                <Typography color="text.secondary">
+                  Category insights will appear after adding expenses.
+                </Typography>
+              ) : (
+                <Stack spacing={2}>
+                  {categorySpend.map((item) => {
+                    const percentage =
+                      totalExpense > 0 ? (item.amount / totalExpense) * 100 : 0;
+
+                    return (
+                      <Box key={item.category_id}>
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          mb={0.8}
                         >
-                          {formatCurrency(income.amount)}
+                          <Typography fontWeight={800}>
+                            {item.category_name}
+                          </Typography>
+                          <Typography color="error.main" fontWeight={900}>
+                            {formatCurrency(item.amount)}
+                          </Typography>
+                        </Stack>
+
+                        <LinearProgress
+                          variant="determinate"
+                          value={percentage}
+                          color="error"
+                          sx={{ height: 8, borderRadius: 10 }}
+                        />
+
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          display="block"
+                          mt={0.5}
+                        >
+                          {percentage.toFixed(1)}% of total expense
                         </Typography>
-
-                        <Tooltip title="Edit income">
-                          <IconButton onClick={() => handleOpenEdit(income)}>
-                            <EditIcon />
-                          </IconButton>
-                        </Tooltip>
-
-                        <Tooltip title="Delete income">
-                          <IconButton
-                            color="error"
-                            onClick={() => setDeleteTarget(income)}
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </Tooltip>
-                      </Stack>
-                    </Stack>
-                  </CardContent>
-                </Card>
-              ))}
-            </Stack>
-          )}
-        </CardContent>
-      </Card>
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
       <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
         <DialogTitle fontWeight={900}>
-          {editingIncome ? "Edit Income" : "Add Income"}
+          {editingExpense ? "Edit Expense" : "Add Expense"}
         </DialogTitle>
 
         <Box component="form" onSubmit={handleSubmit}>
@@ -744,14 +844,14 @@ const IncomePage = () => {
             )}
 
             <FormControl fullWidth margin="normal">
-              <InputLabel>Income Category</InputLabel>
+              <InputLabel>Expense Category</InputLabel>
               <Select
-                label="Income Category"
+                label="Expense Category"
                 name="category_id"
                 value={formData.category_id}
                 onChange={handleChange}
               >
-                {incomeCategories.map((category) => (
+                {expenseCategories.map((category) => (
                   <MenuItem
                     key={category.category_id}
                     value={category.category_id}
@@ -787,21 +887,19 @@ const IncomePage = () => {
               fullWidth
               required
               margin="normal"
-              placeholder="Example: June salary, Freelance project, Bonus"
+              placeholder="Example: Grocery shopping, Rent payment, Cab fare"
             />
 
             <TextField
-              label="Income Date"
-              name="income_date"
+              label="Expense Date"
+              name="expense_date"
               type="date"
-              value={formData.income_date}
+              value={formData.expense_date}
               onChange={handleChange}
               fullWidth
               required
               margin="normal"
-              InputLabelProps={{
-                shrink: true,
-              }}
+              InputLabelProps={{ shrink: true }}
             />
           </DialogContent>
 
@@ -813,9 +911,9 @@ const IncomePage = () => {
             <Button type="submit" variant="contained" disabled={saving}>
               {saving
                 ? "Saving..."
-                : editingIncome
-                ? "Update Income"
-                : "Create Income"}
+                : editingExpense
+                ? "Update Expense"
+                : "Create Expense"}
             </Button>
           </DialogActions>
         </Box>
@@ -827,11 +925,11 @@ const IncomePage = () => {
         fullWidth
         maxWidth="xs"
       >
-        <DialogTitle fontWeight={900}>Delete Income</DialogTitle>
+        <DialogTitle fontWeight={900}>Delete Expense</DialogTitle>
 
         <DialogContent>
           <Typography>
-            Are you sure you want to delete this income record?
+            Are you sure you want to delete this expense record?
           </Typography>
 
           {deleteTarget && (
@@ -846,7 +944,7 @@ const IncomePage = () => {
               <Typography fontWeight={800}>
                 {deleteTarget.description}
               </Typography>
-              <Typography color="success.main" fontWeight={900}>
+              <Typography color="error.main" fontWeight={900}>
                 {formatCurrency(deleteTarget.amount)}
               </Typography>
             </Box>
@@ -872,5 +970,5 @@ const IncomePage = () => {
   );
 };
 
-export default IncomePage;
------------------------------------
+export default ExpensePage;
+------------------------------------
