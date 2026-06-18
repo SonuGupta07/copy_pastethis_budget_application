@@ -1,99 +1,113 @@
 import api from "./axios";
 
-export const getExpenses = async () => {
-  const response = await api.get("/expense/");
+export const getBudgets = async () => {
+  const response = await api.get("/budget/");
   return response.data;
 };
 
-export const createExpense = async (data) => {
-  const response = await api.post("/expense/", data);
+export const createBudget = async (data) => {
+  const response = await api.post("/budget/", data);
   return response.data;
 };
 
-export const updateExpense = async (expenseId, data) => {
-  const response = await api.put(`/expense/${expenseId}`, data);
+export const updateBudget = async (budgetId, data) => {
+  const response = await api.put(`/budget/${budgetId}`, data);
   return response.data;
 };
 
-export const deleteExpense = async (expenseId) => {
-  const response = await api.delete(`/expense/${expenseId}`);
+export const deleteBudget = async (budgetId) => {
+  const response = await api.delete(`/budget/${budgetId}`);
   return response.data;
 };
---------------------------------------------
-export const decodeJwtPayload = (token) => {
-  try {
-    if (!token) return null;
 
-    const base64Url = token.split(".")[1];
-    if (!base64Url) return null;
-
-    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split("")
-        .map((char) => `%${`00${char.charCodeAt(0).toString(16)}`.slice(-2)}`)
-        .join("")
-    );
-
-    return JSON.parse(jsonPayload);
-  } catch {
-    return null;
-  }
+export const getBudgetSummary = async (userId) => {
+  const response = await api.get(`/budget/summary/${userId}`);
+  return response.data;
 };
 
-export const getUserIdFromToken = () => {
-  const token = localStorage.getItem("accessToken");
-  const payload = decodeJwtPayload(token);
-
-  return payload?.user_id || null;
+export const getBudgetCategorySummary = async (userId) => {
+  const response = await api.get(`/budget/category-summary/${userId}`);
+  return response.data;
 };
-
-
 -------------------------------------------
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  createExpense,
-  deleteExpense,
-  getExpenses,
-  updateExpense,
-} from "../api/expenseApi";
+  createBudget,
+  deleteBudget,
+  getBudgetCategorySummary,
+  getBudgets,
+  getBudgetSummary,
+  updateBudget,
+} from "../api/budgetApi";
 import { getUserIdFromToken } from "../utils/jwt";
 
-const useExpense = () => {
-  const [expenseList, setExpenseList] = useState([]);
+const useBudget = () => {
+  const [budgets, setBudgets] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [categorySummary, setCategorySummary] = useState([]);
+
   const [loading, setLoading] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
   const [error, setError] = useState("");
 
   const userId = useMemo(() => getUserIdFromToken(), []);
 
-  const fetchExpenses = useCallback(async () => {
+  const fetchBudgets = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const data = await getExpenses();
+      const data = await getBudgets();
       const list = Array.isArray(data) ? data : [];
 
-      const userSpecificExpenses = userId
+      const userSpecificBudgets = userId
         ? list.filter((item) => Number(item.user_id) === Number(userId))
         : list;
 
-      setExpenseList(userSpecificExpenses);
+      setBudgets(userSpecificBudgets);
     } catch (err) {
       setError(
         err.response?.data?.detail ||
           err.response?.data?.message ||
-          "Failed to load expense records"
+          "Failed to load budget records"
       );
     } finally {
       setLoading(false);
     }
   }, [userId]);
 
-  const addExpense = async (payload) => {
+  const fetchBudgetInsights = useCallback(async () => {
+    if (!userId) return;
+
+    setSummaryLoading(true);
+
+    try {
+      const [summaryData, categorySummaryData] = await Promise.all([
+        getBudgetSummary(userId),
+        getBudgetCategorySummary(userId),
+      ]);
+
+      setSummary(summaryData);
+      setCategorySummary(
+        Array.isArray(categorySummaryData) ? categorySummaryData : []
+      );
+    } catch {
+      setSummary(null);
+      setCategorySummary([]);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [userId]);
+
+  const refreshBudgetData = useCallback(async () => {
+    await fetchBudgets();
+    await fetchBudgetInsights();
+  }, [fetchBudgets, fetchBudgetInsights]);
+
+  const addBudget = async (payload) => {
     setSaving(true);
     setError("");
 
@@ -102,21 +116,21 @@ const useExpense = () => {
         throw new Error("User ID not found in token. Please login again.");
       }
 
-      await createExpense({
+      await createBudget({
         user_id: Number(userId),
         category_id: Number(payload.category_id),
-        amount: Number(payload.amount),
-        description: payload.description,
-        expense_date: payload.expense_date,
+        month: Number(payload.month),
+        year: Number(payload.year),
+        budget_amount: Number(payload.budget_amount),
       });
 
-      await fetchExpenses();
+      await refreshBudgetData();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
         err.message ||
-        "Failed to create expense";
+        "Failed to create budget";
 
       setError(message);
       throw new Error(message);
@@ -125,24 +139,24 @@ const useExpense = () => {
     }
   };
 
-  const editExpense = async (expenseId, payload) => {
+  const editBudget = async (budgetId, payload) => {
     setSaving(true);
     setError("");
 
     try {
-      await updateExpense(expenseId, {
+      await updateBudget(budgetId, {
         category_id: Number(payload.category_id),
-        amount: Number(payload.amount),
-        description: payload.description,
-        expense_date: payload.expense_date,
+        month: Number(payload.month),
+        year: Number(payload.year),
+        budget_amount: Number(payload.budget_amount),
       });
 
-      await fetchExpenses();
+      await refreshBudgetData();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
-        "Failed to update expense";
+        "Failed to update budget";
 
       setError(message);
       throw new Error(message);
@@ -151,18 +165,18 @@ const useExpense = () => {
     }
   };
 
-  const removeExpense = async (expenseId) => {
+  const removeBudget = async (budgetId) => {
     setDeleting(true);
     setError("");
 
     try {
-      await deleteExpense(expenseId);
-      await fetchExpenses();
+      await deleteBudget(budgetId);
+      await refreshBudgetData();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
-        "Failed to delete expense";
+        "Failed to delete budget";
 
       setError(message);
       throw new Error(message);
@@ -172,25 +186,28 @@ const useExpense = () => {
   };
 
   useEffect(() => {
-    fetchExpenses();
-  }, [fetchExpenses]);
+    refreshBudgetData();
+  }, [refreshBudgetData]);
 
   return {
-    expenseList,
+    budgets,
+    summary,
+    categorySummary,
     loading,
+    summaryLoading,
     saving,
     deleting,
     error,
     userId,
-    fetchExpenses,
-    addExpense,
-    editExpense,
-    removeExpense,
+    refreshBudgetData,
+    addBudget,
+    editBudget,
+    removeBudget,
   };
 };
 
-export default useExpense;
---------------------------------------------
+export default useBudget;
+-----------------------------------------
 import { useMemo, useState } from "react";
 import {
   Alert,
@@ -217,23 +234,34 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import AddIcon from "@mui/icons-material/Add";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import CurrencyRupeeIcon from "@mui/icons-material/CurrencyRupee";
-import CategoryIcon from "@mui/icons-material/Category";
+import SavingsIcon from "@mui/icons-material/Savings";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import PageHeader from "../../components/common/PageHeader";
-import useExpense from "../../hooks/useExpense";
+import useBudget from "../../hooks/useBudget";
 import useCategories from "../../hooks/useCategories";
 
-const getToday = () => new Date().toISOString().slice(0, 10);
+const monthNames = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
-const getCurrentMonthValue = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-};
+const getCurrentMonth = () => new Date().getMonth() + 1;
+const getCurrentYear = () => new Date().getFullYear();
 
 const formatCurrency = (value) => {
   return new Intl.NumberFormat("en-IN", {
@@ -243,28 +271,21 @@ const formatCurrency = (value) => {
   }).format(Number(value || 0));
 };
 
-const formatDate = (value) => {
-  if (!value) return "-";
-
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
-};
-
-const ExpensePage = () => {
+const BudgetPage = () => {
   const {
-    expenseList,
+    budgets,
+    summary,
+    categorySummary,
     loading,
+    summaryLoading,
     saving,
     deleting,
     error,
-    fetchExpenses,
-    addExpense,
-    editExpense,
-    removeExpense,
-  } = useExpense();
+    refreshBudgetData,
+    addBudget,
+    editBudget,
+    removeBudget,
+  } = useBudget();
 
   const { categories, loading: categoryLoading } = useCategories();
 
@@ -275,93 +296,62 @@ const ExpensePage = () => {
   }, [categories]);
 
   const [open, setOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState(null);
+  const [editingBudget, setEditingBudget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [formError, setFormError] = useState("");
 
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [monthFilter, setMonthFilter] = useState("ALL");
+  const [yearFilter, setYearFilter] = useState(String(getCurrentYear()));
 
   const [formData, setFormData] = useState({
     category_id: "",
-    amount: "",
-    description: "",
-    expense_date: getToday(),
+    month: getCurrentMonth(),
+    year: getCurrentYear(),
+    budget_amount: "",
   });
 
-  const totalExpense = useMemo(() => {
-    return expenseList.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  }, [expenseList]);
+  const totalBudget = useMemo(() => {
+    return budgets.reduce(
+      (sum, budget) => sum + Number(budget.budget_amount || 0),
+      0
+    );
+  }, [budgets]);
 
-  const currentMonthExpense = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    return expenseList.reduce((sum, item) => {
-      const date = new Date(item.expense_date);
-
+  const currentMonthBudget = useMemo(() => {
+    return budgets.reduce((sum, budget) => {
       if (
-        date.getMonth() === currentMonth &&
-        date.getFullYear() === currentYear
+        Number(budget.month) === getCurrentMonth() &&
+        Number(budget.year) === getCurrentYear()
       ) {
-        return sum + Number(item.amount || 0);
+        return sum + Number(budget.budget_amount || 0);
       }
 
       return sum;
     }, 0);
-  }, [expenseList]);
+  }, [budgets]);
 
-  const highestExpense = useMemo(() => {
-    if (expenseList.length === 0) return 0;
-    return Math.max(...expenseList.map((item) => Number(item.amount || 0)));
-  }, [expenseList]);
-
-  const categorySpend = useMemo(() => {
-    const totals = {};
-
-    expenseList.forEach((expense) => {
-      const key = expense.category_id;
-      totals[key] = (totals[key] || 0) + Number(expense.amount || 0);
-    });
-
-    return Object.entries(totals)
-      .map(([categoryId, amount]) => ({
-        category_id: Number(categoryId),
-        category_name:
-          expenseCategories.find(
-            (category) => Number(category.category_id) === Number(categoryId)
-          )?.category_name || "Unknown Category",
-        amount,
-      }))
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5);
-  }, [expenseList, expenseCategories]);
-
-  const filteredExpenses = useMemo(() => {
-    return expenseList.filter((expense) => {
+  const filteredBudgets = useMemo(() => {
+    return budgets.filter((budget) => {
       const category = expenseCategories.find(
-        (item) => Number(item.category_id) === Number(expense.category_id)
+        (item) => Number(item.category_id) === Number(budget.category_id)
       );
 
-      const searchableText = `${expense.description || ""} ${
-        category?.category_name || ""
-      }`.toLowerCase();
+      const categoryName = category?.category_name || "";
 
-      const matchesSearch = searchableText.includes(search.toLowerCase());
-
-      const matchesCategory =
-        categoryFilter === "ALL" ||
-        Number(expense.category_id) === Number(categoryFilter);
+      const matchesSearch = categoryName
+        .toLowerCase()
+        .includes(search.toLowerCase());
 
       const matchesMonth =
-        monthFilter === "ALL" ||
-        String(expense.expense_date || "").startsWith(monthFilter);
+        monthFilter === "ALL" || Number(budget.month) === Number(monthFilter);
 
-      return matchesSearch && matchesCategory && matchesMonth;
+      const matchesYear =
+        yearFilter === "ALL" || Number(budget.year) === Number(yearFilter);
+
+      return matchesSearch && matchesMonth && matchesYear;
     });
-  }, [expenseList, expenseCategories, search, categoryFilter, monthFilter]);
+  }, [budgets, expenseCategories, search, monthFilter, yearFilter]);
 
   const getCategoryName = (categoryId) => {
     const category = expenseCategories.find(
@@ -371,26 +361,32 @@ const ExpensePage = () => {
     return category?.category_name || "Unknown Category";
   };
 
+  const getUsageColor = (percentage) => {
+    if (percentage >= 90) return "error";
+    if (percentage >= 70) return "warning";
+    return "success";
+  };
+
   const handleOpenAdd = () => {
-    setEditingExpense(null);
+    setEditingBudget(null);
     setFormError("");
     setFormData({
       category_id: "",
-      amount: "",
-      description: "",
-      expense_date: getToday(),
+      month: getCurrentMonth(),
+      year: getCurrentYear(),
+      budget_amount: "",
     });
     setOpen(true);
   };
 
-  const handleOpenEdit = (expense) => {
-    setEditingExpense(expense);
+  const handleOpenEdit = (budget) => {
+    setEditingBudget(budget);
     setFormError("");
     setFormData({
-      category_id: expense.category_id || "",
-      amount: expense.amount || "",
-      description: expense.description || "",
-      expense_date: expense.expense_date || getToday(),
+      category_id: budget.category_id || "",
+      month: budget.month || getCurrentMonth(),
+      year: budget.year || getCurrentYear(),
+      budget_amount: budget.budget_amount || "",
     });
     setOpen(true);
   };
@@ -398,7 +394,7 @@ const ExpensePage = () => {
   const handleClose = () => {
     if (!saving) {
       setOpen(false);
-      setEditingExpense(null);
+      setEditingBudget(null);
     }
   };
 
@@ -414,16 +410,16 @@ const ExpensePage = () => {
       return "Please select an expense category";
     }
 
-    if (!formData.amount || Number(formData.amount) <= 0) {
-      return "Amount must be greater than zero";
+    if (!formData.month || Number(formData.month) < 1 || Number(formData.month) > 12) {
+      return "Please select a valid month";
     }
 
-    if (!formData.description.trim()) {
-      return "Description is required";
+    if (!formData.year || Number(formData.year) < 2024) {
+      return "Please enter a valid year";
     }
 
-    if (!formData.expense_date) {
-      return "Expense date is required";
+    if (!formData.budget_amount || Number(formData.budget_amount) <= 0) {
+      return "Budget amount must be greater than zero";
     }
 
     return "";
@@ -443,15 +439,15 @@ const ExpensePage = () => {
     try {
       const payload = {
         category_id: formData.category_id,
-        amount: formData.amount,
-        description: formData.description.trim(),
-        expense_date: formData.expense_date,
+        month: formData.month,
+        year: formData.year,
+        budget_amount: formData.budget_amount,
       };
 
-      if (editingExpense) {
-        await editExpense(editingExpense.expense_id, payload);
+      if (editingBudget) {
+        await editBudget(editingBudget.budget_id, payload);
       } else {
-        await addExpense(payload);
+        await addBudget(payload);
       }
 
       handleClose();
@@ -464,20 +460,23 @@ const ExpensePage = () => {
     if (!deleteTarget) return;
 
     try {
-      await removeExpense(deleteTarget.expense_id);
+      await removeBudget(deleteTarget.budget_id);
       setDeleteTarget(null);
     } catch {
       // Hook already handles error
     }
   };
 
+  const utilization = Number(summary?.utilization_percentage || 0);
+  const remainingBudget = Number(summary?.remaining_budget || 0);
+
   return (
     <Box>
       <PageHeader
-        title="Expense Tracking"
-        subtitle="Track daily spending, category-wise expenses and monthly outflow."
-        breadcrumbs={["Finance", "Expenses"]}
-        actionText="Add Expense"
+        title="Budget Planning"
+        subtitle="Create monthly category-wise budgets and monitor spending utilization."
+        breadcrumbs={["Finance", "Budgets"]}
+        actionText="Add Budget"
         onAction={handleOpenAdd}
       />
 
@@ -488,31 +487,31 @@ const ExpensePage = () => {
       )}
 
       <Grid container spacing={3} mb={3}>
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={3}>
           <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
-              <Stack direction="row" alignItems="center" spacing={2}>
+              <Stack direction="row" spacing={2} alignItems="center">
                 <Box
                   sx={{
                     width: 50,
                     height: 50,
                     borderRadius: 3,
+                    color: "white",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "white",
-                    background: "linear-gradient(135deg, #dc2626, #ef4444)",
+                    background: "linear-gradient(135deg, #2563eb, #7c3aed)",
                   }}
                 >
-                  <ReceiptLongIcon />
+                  <AccountBalanceWalletIcon />
                 </Box>
 
                 <Box>
                   <Typography color="text.secondary" fontWeight={700}>
-                    Total Expense
+                    Total Budget
                   </Typography>
                   <Typography variant="h5" fontWeight={900}>
-                    {formatCurrency(totalExpense)}
+                    {formatCurrency(summary?.total_budget ?? totalBudget)}
                   </Typography>
                 </Box>
               </Stack>
@@ -520,33 +519,53 @@ const ExpensePage = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={3}>
           <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
               <Typography color="text.secondary" fontWeight={700}>
-                Current Month Expense
+                Total Expense
               </Typography>
               <Typography variant="h5" fontWeight={900} color="error.main">
-                {formatCurrency(currentMonthExpense)}
+                {formatCurrency(summary?.total_expense || 0)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Expenses recorded for this month.
+                Based on recorded expenses.
               </Typography>
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={3}>
           <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
               <Typography color="text.secondary" fontWeight={700}>
-                Highest Expense Entry
+                Remaining Budget
               </Typography>
-              <Typography variant="h5" fontWeight={900}>
-                {formatCurrency(highestExpense)}
+              <Typography
+                variant="h5"
+                fontWeight={900}
+                color={remainingBudget < 0 ? "error.main" : "success.main"}
+              >
+                {formatCurrency(remainingBudget)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Highest single expense transaction.
+                Available budget balance.
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={3}>
+          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+            <CardContent>
+              <Typography color="text.secondary" fontWeight={700}>
+                Current Month Budget
+              </Typography>
+              <Typography variant="h5" fontWeight={900}>
+                {formatCurrency(currentMonthBudget)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Budget planned for this month.
               </Typography>
             </CardContent>
           </Card>
@@ -564,7 +583,7 @@ const ExpensePage = () => {
                 mb={3}
               >
                 <TextField
-                  label="Search expenses"
+                  label="Search budget category"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   size="small"
@@ -572,40 +591,34 @@ const ExpensePage = () => {
                 />
 
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                  <FormControl size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel>Category</InputLabel>
+                  <FormControl size="small" sx={{ minWidth: 150 }}>
+                    <InputLabel>Month</InputLabel>
                     <Select
-                      label="Category"
-                      value={categoryFilter}
-                      onChange={(event) => setCategoryFilter(event.target.value)}
+                      label="Month"
+                      value={monthFilter}
+                      onChange={(event) => setMonthFilter(event.target.value)}
                     >
-                      <MenuItem value="ALL">All Categories</MenuItem>
-                      {expenseCategories.map((category) => (
-                        <MenuItem
-                          key={category.category_id}
-                          value={category.category_id}
-                        >
-                          {category.category_name}
+                      <MenuItem value="ALL">All Months</MenuItem>
+                      {monthNames.map((month, index) => (
+                        <MenuItem key={month} value={index + 1}>
+                          {month}
                         </MenuItem>
                       ))}
                     </Select>
                   </FormControl>
 
                   <TextField
-                    label="Month"
-                    type="month"
+                    label="Year"
                     size="small"
-                    value={monthFilter === "ALL" ? "" : monthFilter}
-                    onChange={(event) =>
-                      setMonthFilter(event.target.value || "ALL")
-                    }
-                    InputLabelProps={{ shrink: true }}
+                    value={yearFilter}
+                    onChange={(event) => setYearFilter(event.target.value || "ALL")}
+                    sx={{ width: 120 }}
                   />
 
                   <Button
                     variant="outlined"
                     startIcon={<RefreshIcon />}
-                    onClick={fetchExpenses}
+                    onClick={refreshBudgetData}
                   >
                     Refresh
                   </Button>
@@ -638,11 +651,10 @@ const ExpensePage = () => {
                     No expense category found
                   </Typography>
                   <Typography color="text.secondary" mt={1}>
-                    Please create at least one category with type EXPENSE before
-                    adding expenses.
+                    Please create at least one EXPENSE category before creating budgets.
                   </Typography>
                 </Box>
-              ) : filteredExpenses.length === 0 ? (
+              ) : filteredBudgets.length === 0 ? (
                 <Box
                   sx={{
                     py: 8,
@@ -653,10 +665,10 @@ const ExpensePage = () => {
                   }}
                 >
                   <Typography variant="h6" fontWeight={900}>
-                    No expense records found
+                    No budgets found
                   </Typography>
                   <Typography color="text.secondary" mt={1}>
-                    Add your first expense to start tracking spending.
+                    Create your first monthly category budget.
                   </Typography>
 
                   <Button
@@ -665,14 +677,14 @@ const ExpensePage = () => {
                     sx={{ mt: 3 }}
                     onClick={handleOpenAdd}
                   >
-                    Add Expense
+                    Add Budget
                   </Button>
                 </Box>
               ) : (
                 <Stack spacing={2}>
-                  {filteredExpenses.map((expense) => (
+                  {filteredBudgets.map((budget) => (
                     <Card
-                      key={expense.expense_id}
+                      key={budget.budget_id}
                       elevation={0}
                       sx={{
                         border: "1px solid",
@@ -697,64 +709,53 @@ const ExpensePage = () => {
                                 width: 46,
                                 height: 46,
                                 borderRadius: 3,
+                                backgroundColor: "primary.light",
+                                color: "primary.contrastText",
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                backgroundColor: "error.light",
-                                color: "error.contrastText",
                               }}
                             >
-                              <CurrencyRupeeIcon />
+                              <SavingsIcon />
                             </Box>
 
                             <Box>
                               <Typography variant="h6" fontWeight={900}>
-                                {expense.description}
+                                {getCategoryName(budget.category_id)}
                               </Typography>
 
-                              <Stack
-                                direction="row"
-                                spacing={1}
-                                alignItems="center"
-                                flexWrap="wrap"
-                                mt={0.5}
-                              >
+                              <Stack direction="row" spacing={1} flexWrap="wrap" mt={0.5}>
                                 <Chip
-                                  label={getCategoryName(expense.category_id)}
-                                  color="error"
+                                  label={`${monthNames[Number(budget.month) - 1]} ${budget.year}`}
+                                  color="primary"
                                   size="small"
                                 />
 
-                                <Typography
-                                  variant="body2"
-                                  color="text.secondary"
-                                >
-                                  {formatDate(expense.expense_date)}
-                                </Typography>
+                                <Chip
+                                  label="Expense Budget"
+                                  color="error"
+                                  size="small"
+                                  variant="outlined"
+                                />
                               </Stack>
                             </Box>
                           </Stack>
 
                           <Stack direction="row" spacing={2} alignItems="center">
-                            <Typography
-                              variant="h6"
-                              fontWeight={900}
-                              color="error.main"
-                              sx={{ minWidth: 130 }}
-                            >
-                              {formatCurrency(expense.amount)}
+                            <Typography variant="h6" fontWeight={900}>
+                              {formatCurrency(budget.budget_amount)}
                             </Typography>
 
-                            <Tooltip title="Edit expense">
-                              <IconButton onClick={() => handleOpenEdit(expense)}>
+                            <Tooltip title="Edit budget">
+                              <IconButton onClick={() => handleOpenEdit(budget)}>
                                 <EditIcon />
                               </IconButton>
                             </Tooltip>
 
-                            <Tooltip title="Delete expense">
+                            <Tooltip title="Delete budget">
                               <IconButton
                                 color="error"
-                                onClick={() => setDeleteTarget(expense)}
+                                onClick={() => setDeleteTarget(budget)}
                               >
                                 <DeleteIcon />
                               </IconButton>
@@ -771,68 +772,98 @@ const ExpensePage = () => {
         </Grid>
 
         <Grid item xs={12} lg={4}>
-          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-            <CardContent>
-              <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                <CategoryIcon color="primary" />
-                <Typography variant="h6" fontWeight={900}>
-                  Top Spending Categories
-                </Typography>
-              </Stack>
-
-              {categorySpend.length === 0 ? (
-                <Typography color="text.secondary">
-                  Category insights will appear after adding expenses.
-                </Typography>
-              ) : (
-                <Stack spacing={2}>
-                  {categorySpend.map((item) => {
-                    const percentage =
-                      totalExpense > 0 ? (item.amount / totalExpense) * 100 : 0;
-
-                    return (
-                      <Box key={item.category_id}>
-                        <Stack
-                          direction="row"
-                          justifyContent="space-between"
-                          mb={0.8}
-                        >
-                          <Typography fontWeight={800}>
-                            {item.category_name}
-                          </Typography>
-                          <Typography color="error.main" fontWeight={900}>
-                            {formatCurrency(item.amount)}
-                          </Typography>
-                        </Stack>
-
-                        <LinearProgress
-                          variant="determinate"
-                          value={percentage}
-                          color="error"
-                          sx={{ height: 8, borderRadius: 10 }}
-                        />
-
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          display="block"
-                          mt={0.5}
-                        >
-                          {percentage.toFixed(1)}% of total expense
-                        </Typography>
-                      </Box>
-                    );
-                  })}
+          <Stack spacing={3}>
+            <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+              <CardContent>
+                <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+                  <WarningAmberIcon color={getUsageColor(utilization)} />
+                  <Typography variant="h6" fontWeight={900}>
+                    Budget Utilization
+                  </Typography>
                 </Stack>
-              )}
-            </CardContent>
-          </Card>
+
+                {summaryLoading ? (
+                  <Box display="flex" justifyContent="center" py={4}>
+                    <CircularProgress size={28} />
+                  </Box>
+                ) : (
+                  <>
+                    <Typography variant="h4" fontWeight={900}>
+                      {utilization.toFixed(2)}%
+                    </Typography>
+
+                    <LinearProgress
+                      variant="determinate"
+                      value={Math.min(utilization, 100)}
+                      color={getUsageColor(utilization)}
+                      sx={{ height: 10, borderRadius: 10, mt: 2 }}
+                    />
+
+                    <Typography variant="body2" color="text.secondary" mt={1.5}>
+                      {utilization >= 100
+                        ? "You have crossed your planned budget."
+                        : utilization >= 70
+                        ? "You are close to your budget limit."
+                        : "Your spending is within a healthy range."}
+                    </Typography>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+              <CardContent>
+                <Typography variant="h6" fontWeight={900} mb={2}>
+                  Category Budget Summary
+                </Typography>
+
+                {categorySummary.length === 0 ? (
+                  <Typography color="text.secondary">
+                    Category-wise budget usage will appear after adding budgets and expenses.
+                  </Typography>
+                ) : (
+                  <Stack spacing={2}>
+                    {categorySummary.map((item) => {
+                      const used =
+                        Number(item.budget) > 0
+                          ? (Number(item.expense) / Number(item.budget)) * 100
+                          : 0;
+
+                      return (
+                        <Box key={item.category_name}>
+                          <Stack direction="row" justifyContent="space-between">
+                            <Typography fontWeight={800}>
+                              {item.category_name}
+                            </Typography>
+                            <Typography fontWeight={900}>
+                              {formatCurrency(item.expense)} / {formatCurrency(item.budget)}
+                            </Typography>
+                          </Stack>
+
+                          <LinearProgress
+                            variant="determinate"
+                            value={Math.min(used, 100)}
+                            color={getUsageColor(used)}
+                            sx={{ height: 8, borderRadius: 10, mt: 1 }}
+                          />
+
+                          <Typography variant="caption" color="text.secondary">
+                            Remaining: {formatCurrency(item.remaining)}
+                          </Typography>
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                )}
+              </CardContent>
+            </Card>
+          </Stack>
         </Grid>
       </Grid>
 
       <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
         <DialogTitle fontWeight={900}>
-          {editingExpense ? "Edit Expense" : "Add Expense"}
+          {editingBudget ? "Edit Budget" : "Add Budget"}
         </DialogTitle>
 
         <Box component="form" onSubmit={handleSubmit}>
@@ -852,54 +883,60 @@ const ExpensePage = () => {
                 onChange={handleChange}
               >
                 {expenseCategories.map((category) => (
-                  <MenuItem
-                    key={category.category_id}
-                    value={category.category_id}
-                  >
+                  <MenuItem key={category.category_id} value={category.category_id}>
                     {category.category_name}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
 
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth margin="normal">
+                  <InputLabel>Month</InputLabel>
+                  <Select
+                    label="Month"
+                    name="month"
+                    value={formData.month}
+                    onChange={handleChange}
+                  >
+                    {monthNames.map((month, index) => (
+                      <MenuItem key={month} value={index + 1}>
+                        {month}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Year"
+                  name="year"
+                  type="number"
+                  value={formData.year}
+                  onChange={handleChange}
+                  fullWidth
+                  required
+                  margin="normal"
+                  inputProps={{ min: 2024 }}
+                />
+              </Grid>
+            </Grid>
+
             <TextField
-              label="Amount"
-              name="amount"
+              label="Budget Amount"
+              name="budget_amount"
               type="number"
-              value={formData.amount}
+              value={formData.budget_amount}
               onChange={handleChange}
               fullWidth
               required
               margin="normal"
               inputProps={{ min: 1, step: "0.01" }}
               InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">₹</InputAdornment>
-                ),
+                startAdornment: <InputAdornment position="start">₹</InputAdornment>,
               }}
-            />
-
-            <TextField
-              label="Description"
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              fullWidth
-              required
-              margin="normal"
-              placeholder="Example: Grocery shopping, Rent payment, Cab fare"
-            />
-
-            <TextField
-              label="Expense Date"
-              name="expense_date"
-              type="date"
-              value={formData.expense_date}
-              onChange={handleChange}
-              fullWidth
-              required
-              margin="normal"
-              InputLabelProps={{ shrink: true }}
             />
           </DialogContent>
 
@@ -911,9 +948,9 @@ const ExpensePage = () => {
             <Button type="submit" variant="contained" disabled={saving}>
               {saving
                 ? "Saving..."
-                : editingExpense
-                ? "Update Expense"
-                : "Create Expense"}
+                : editingBudget
+                ? "Update Budget"
+                : "Create Budget"}
             </Button>
           </DialogActions>
         </Box>
@@ -925,11 +962,11 @@ const ExpensePage = () => {
         fullWidth
         maxWidth="xs"
       >
-        <DialogTitle fontWeight={900}>Delete Expense</DialogTitle>
+        <DialogTitle fontWeight={900}>Delete Budget</DialogTitle>
 
         <DialogContent>
           <Typography>
-            Are you sure you want to delete this expense record?
+            Are you sure you want to delete this budget?
           </Typography>
 
           {deleteTarget && (
@@ -942,10 +979,10 @@ const ExpensePage = () => {
               }}
             >
               <Typography fontWeight={800}>
-                {deleteTarget.description}
+                {getCategoryName(deleteTarget.category_id)}
               </Typography>
-              <Typography color="error.main" fontWeight={900}>
-                {formatCurrency(deleteTarget.amount)}
+              <Typography color="primary.main" fontWeight={900}>
+                {formatCurrency(deleteTarget.budget_amount)}
               </Typography>
             </Box>
           )}
@@ -970,5 +1007,6 @@ const ExpensePage = () => {
   );
 };
 
-export default ExpensePage;
-------------------------------------
+export default BudgetPage;
+---------------------------------------
+
