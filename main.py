@@ -1,78 +1,68 @@
 import api from "./axios";
 
-export const getSavingsGoals = async () => {
-  const response = await api.get("/savings/");
+export const getRecurringTransactions = async () => {
+  const response = await api.get("/recurring/");
   return response.data;
 };
 
-export const createSavingsGoal = async (data) => {
-  const response = await api.post("/savings/", data);
+export const createRecurringTransaction = async (data) => {
+  const response = await api.post("/recurring/", data);
   return response.data;
 };
 
-export const updateSavingsGoal = async (goalId, data) => {
-  const response = await api.put(`/savings/${goalId}`, data);
+export const updateRecurringTransaction = async (recurringId, data) => {
+  const response = await api.put(`/recurring/${recurringId}`, data);
   return response.data;
 };
 
-export const deleteSavingsGoal = async (goalId) => {
-  const response = await api.delete(`/savings/${goalId}`);
+export const deleteRecurringTransaction = async (recurringId) => {
+  const response = await api.delete(`/recurring/${recurringId}`);
   return response.data;
 };
-
-export const getSavingsGoalProgress = async (goalId) => {
-  const response = await api.get(`/savings/progress/${goalId}`);
-  return response.data;
-};
---------------------------------
+------------------------------------------------
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  createSavingsGoal,
-  deleteSavingsGoal,
-  getSavingsGoalProgress,
-  getSavingsGoals,
-  updateSavingsGoal,
-} from "../api/savingsApi";
+  createRecurringTransaction,
+  deleteRecurringTransaction,
+  getRecurringTransactions,
+  updateRecurringTransaction,
+} from "../api/recurringApi";
 import { getUserIdFromToken } from "../utils/jwt";
 
-const useSavings = () => {
-  const [goals, setGoals] = useState([]);
-  const [selectedProgress, setSelectedProgress] = useState(null);
-
+const useRecurring = () => {
+  const [recurringList, setRecurringList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [progressLoading, setProgressLoading] = useState(false);
-
   const [error, setError] = useState("");
 
   const userId = useMemo(() => getUserIdFromToken(), []);
 
-  const fetchGoals = useCallback(async () => {
+  const fetchRecurring = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const data = await getSavingsGoals();
+      const data = await getRecurringTransactions();
       const list = Array.isArray(data) ? data : [];
 
-      const userSpecificGoals = userId
-        ? list.filter((goal) => Number(goal.user_id) === Number(userId))
+      const userSpecificRecurring = userId
+        ? list.filter((item) => Number(item.user_id) === Number(userId))
         : list;
 
-      setGoals(userSpecificGoals);
+      setRecurringList(userSpecificRecurring);
     } catch (err) {
       setError(
         err.response?.data?.detail ||
           err.response?.data?.message ||
-          "Failed to load savings goals"
+          "Failed to load recurring transactions"
       );
     } finally {
       setLoading(false);
     }
   }, [userId]);
 
-  const addGoal = async (payload) => {
+  const addRecurring = async (payload) => {
     setSaving(true);
     setError("");
 
@@ -81,21 +71,22 @@ const useSavings = () => {
         throw new Error("User ID not found in token. Please login again.");
       }
 
-      await createSavingsGoal({
+      await createRecurringTransaction({
         user_id: Number(userId),
-        goal_name: payload.goal_name,
-        target_amount: Number(payload.target_amount),
-        current_amount: Number(payload.current_amount),
-        target_date: payload.target_date,
+        transaction_type: payload.transaction_type,
+        category_id: Number(payload.category_id),
+        amount: Number(payload.amount),
+        frequency: payload.frequency,
+        next_run_date: payload.next_run_date,
       });
 
-      await fetchGoals();
+      await fetchRecurring();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
         err.message ||
-        "Failed to create savings goal";
+        "Failed to create recurring transaction";
 
       setError(message);
       throw new Error(message);
@@ -104,24 +95,25 @@ const useSavings = () => {
     }
   };
 
-  const editGoal = async (goalId, payload) => {
+  const editRecurring = async (recurringId, payload) => {
     setSaving(true);
     setError("");
 
     try {
-      await updateSavingsGoal(goalId, {
-        goal_name: payload.goal_name,
-        target_amount: Number(payload.target_amount),
-        current_amount: Number(payload.current_amount),
-        target_date: payload.target_date,
+      await updateRecurringTransaction(recurringId, {
+        transaction_type: payload.transaction_type,
+        category_id: Number(payload.category_id),
+        amount: Number(payload.amount),
+        frequency: payload.frequency,
+        next_run_date: payload.next_run_date,
       });
 
-      await fetchGoals();
+      await fetchRecurring();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
-        "Failed to update savings goal";
+        "Failed to update recurring transaction";
 
       setError(message);
       throw new Error(message);
@@ -130,18 +122,18 @@ const useSavings = () => {
     }
   };
 
-  const removeGoal = async (goalId) => {
+  const removeRecurring = async (recurringId) => {
     setDeleting(true);
     setError("");
 
     try {
-      await deleteSavingsGoal(goalId);
-      await fetchGoals();
+      await deleteRecurringTransaction(recurringId);
+      await fetchRecurring();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
-        "Failed to delete savings goal";
+        "Failed to delete recurring transaction";
 
       setError(message);
       throw new Error(message);
@@ -150,50 +142,26 @@ const useSavings = () => {
     }
   };
 
-  const fetchGoalProgress = async (goalId) => {
-    setProgressLoading(true);
-    setSelectedProgress(null);
-
-    try {
-      const data = await getSavingsGoalProgress(goalId);
-      setSelectedProgress(data);
-      return data;
-    } catch (err) {
-      const message =
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        "Failed to load goal progress";
-
-      setError(message);
-      throw new Error(message);
-    } finally {
-      setProgressLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchGoals();
-  }, [fetchGoals]);
+    fetchRecurring();
+  }, [fetchRecurring]);
 
   return {
-    goals,
-    selectedProgress,
+    recurringList,
     loading,
     saving,
     deleting,
-    progressLoading,
     error,
     userId,
-    fetchGoals,
-    addGoal,
-    editGoal,
-    removeGoal,
-    fetchGoalProgress,
+    fetchRecurring,
+    addRecurring,
+    editRecurring,
+    removeRecurring,
   };
 };
 
-export default useSavings;
----------------------------------------
+export default useRecurring;
+-------------------------------------
 import { useMemo, useState } from "react";
 import {
   Alert,
@@ -207,27 +175,34 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
   Grid,
   IconButton,
   InputAdornment,
-  LinearProgress,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
-import SavingsIcon from "@mui/icons-material/Savings";
+import RepeatIcon from "@mui/icons-material/Repeat";
 import AddIcon from "@mui/icons-material/Add";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import FlagIcon from "@mui/icons-material/Flag";
-import EventIcon from "@mui/icons-material/Event";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import EventRepeatIcon from "@mui/icons-material/EventRepeat";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import PageHeader from "../../components/common/PageHeader";
-import useSavings from "../../hooks/useSavings";
+import useRecurring from "../../hooks/useRecurring";
+import useCategories from "../../hooks/useCategories";
 
 const getToday = () => new Date().toISOString().slice(0, 10);
+
+const frequencies = ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"];
 
 const formatCurrency = (value) => {
   return new Intl.NumberFormat("en-IN", {
@@ -247,125 +222,161 @@ const formatDate = (value) => {
   }).format(new Date(value));
 };
 
-const getProgress = (currentAmount, targetAmount) => {
-  if (!targetAmount || Number(targetAmount) <= 0) return 0;
-  return (Number(currentAmount || 0) / Number(targetAmount)) * 100;
-};
-
-const getRemainingAmount = (currentAmount, targetAmount) => {
-  return Math.max(Number(targetAmount || 0) - Number(currentAmount || 0), 0);
-};
-
-const getDaysRemaining = (targetDate) => {
-  if (!targetDate) return null;
+const getDaysUntilRun = (dateValue) => {
+  if (!dateValue) return null;
 
   const today = new Date();
-  const target = new Date(targetDate);
+  const nextDate = new Date(dateValue);
 
   today.setHours(0, 0, 0, 0);
-  target.setHours(0, 0, 0, 0);
+  nextDate.setHours(0, 0, 0, 0);
 
-  const difference = target.getTime() - today.getTime();
-  return Math.ceil(difference / (1000 * 60 * 60 * 24));
+  const diff = nextDate.getTime() - today.getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
 };
 
-const getGoalStatus = (goal) => {
-  const progress = getProgress(goal.current_amount, goal.target_amount);
-  const daysRemaining = getDaysRemaining(goal.target_date);
+const getMonthlyEquivalent = (amount, frequency) => {
+  const value = Number(amount || 0);
 
-  if (progress >= 100 || goal.status === "COMPLETED") {
-    return {
-      label: "COMPLETED",
-      color: "success",
-    };
+  switch (frequency) {
+    case "DAILY":
+      return value * 30;
+    case "WEEKLY":
+      return value * 4;
+    case "MONTHLY":
+      return value;
+    case "YEARLY":
+      return value / 12;
+    default:
+      return value;
   }
-
-  if (daysRemaining !== null && daysRemaining < 0) {
-    return {
-      label: "OVERDUE",
-      color: "error",
-    };
-  }
-
-  return {
-    label: "IN PROGRESS",
-    color: "primary",
-  };
 };
 
-const SavingsPage = () => {
+const RecurringPage = () => {
   const {
-    goals,
+    recurringList,
     loading,
     saving,
     deleting,
     error,
-    fetchGoals,
-    addGoal,
-    editGoal,
-    removeGoal,
-  } = useSavings();
+    fetchRecurring,
+    addRecurring,
+    editRecurring,
+    removeRecurring,
+  } = useRecurring();
+
+  const { categories, loading: categoryLoading } = useCategories();
 
   const [open, setOpen] = useState(false);
-  const [editingGoal, setEditingGoal] = useState(null);
+  const [editingRecurring, setEditingRecurring] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [formError, setFormError] = useState("");
+
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("ALL");
+  const [frequencyFilter, setFrequencyFilter] = useState("ALL");
 
   const [formData, setFormData] = useState({
-    goal_name: "",
-    target_amount: "",
-    current_amount: "",
-    target_date: getToday(),
+    transaction_type: "EXPENSE",
+    category_id: "",
+    amount: "",
+    frequency: "MONTHLY",
+    next_run_date: getToday(),
   });
 
-  const totalTargetAmount = useMemo(() => {
-    return goals.reduce((sum, goal) => sum + Number(goal.target_amount || 0), 0);
-  }, [goals]);
-
-  const totalSavedAmount = useMemo(() => {
-    return goals.reduce((sum, goal) => sum + Number(goal.current_amount || 0), 0);
-  }, [goals]);
-
-  const completedGoalsCount = useMemo(() => {
-    return goals.filter(
-      (goal) =>
-        getProgress(goal.current_amount, goal.target_amount) >= 100 ||
-        goal.status === "COMPLETED"
-    ).length;
-  }, [goals]);
-
-  const overallProgress = useMemo(() => {
-    if (totalTargetAmount <= 0) return 0;
-    return (totalSavedAmount / totalTargetAmount) * 100;
-  }, [totalSavedAmount, totalTargetAmount]);
-
-  const filteredGoals = useMemo(() => {
-    return goals.filter((goal) =>
-      goal.goal_name?.toLowerCase().includes(search.toLowerCase())
+  const availableCategories = useMemo(() => {
+    return categories.filter(
+      (category) =>
+        category.category_type?.toUpperCase().trim() ===
+        formData.transaction_type
     );
-  }, [goals, search]);
+  }, [categories, formData.transaction_type]);
+
+  const incomeCategories = useMemo(() => {
+    return categories.filter(
+      (category) => category.category_type?.toUpperCase().trim() === "INCOME"
+    );
+  }, [categories]);
+
+  const expenseCategories = useMemo(() => {
+    return categories.filter(
+      (category) => category.category_type?.toUpperCase().trim() === "EXPENSE"
+    );
+  }, [categories]);
+
+  const getCategoryName = (categoryId) => {
+    const category = categories.find(
+      (item) => Number(item.category_id) === Number(categoryId)
+    );
+
+    return category?.category_name || "Unknown Category";
+  };
+
+  const totalRecurringIncome = useMemo(() => {
+    return recurringList
+      .filter((item) => item.transaction_type === "INCOME")
+      .reduce(
+        (sum, item) => sum + getMonthlyEquivalent(item.amount, item.frequency),
+        0
+      );
+  }, [recurringList]);
+
+  const totalRecurringExpense = useMemo(() => {
+    return recurringList
+      .filter((item) => item.transaction_type === "EXPENSE")
+      .reduce(
+        (sum, item) => sum + getMonthlyEquivalent(item.amount, item.frequency),
+        0
+      );
+  }, [recurringList]);
+
+  const upcomingCount = useMemo(() => {
+    return recurringList.filter((item) => {
+      const days = getDaysUntilRun(item.next_run_date);
+      return days !== null && days >= 0 && days <= 7;
+    }).length;
+  }, [recurringList]);
+
+  const filteredRecurring = useMemo(() => {
+    return recurringList.filter((item) => {
+      const categoryName = getCategoryName(item.category_id);
+
+      const matchesSearch = `${categoryName} ${item.transaction_type} ${item.frequency}`
+        .toLowerCase()
+        .includes(search.toLowerCase());
+
+      const matchesType =
+        typeFilter === "ALL" || item.transaction_type === typeFilter;
+
+      const matchesFrequency =
+        frequencyFilter === "ALL" || item.frequency === frequencyFilter;
+
+      return matchesSearch && matchesType && matchesFrequency;
+    });
+  }, [recurringList, search, typeFilter, frequencyFilter, categories]);
 
   const handleOpenAdd = () => {
-    setEditingGoal(null);
+    setEditingRecurring(null);
     setFormError("");
     setFormData({
-      goal_name: "",
-      target_amount: "",
-      current_amount: "",
-      target_date: getToday(),
+      transaction_type: "EXPENSE",
+      category_id: "",
+      amount: "",
+      frequency: "MONTHLY",
+      next_run_date: getToday(),
     });
     setOpen(true);
   };
 
-  const handleOpenEdit = (goal) => {
-    setEditingGoal(goal);
+  const handleOpenEdit = (recurring) => {
+    setEditingRecurring(recurring);
     setFormError("");
     setFormData({
-      goal_name: goal.goal_name || "",
-      target_amount: goal.target_amount || "",
-      current_amount: goal.current_amount || "",
-      target_date: goal.target_date || getToday(),
+      transaction_type: recurring.transaction_type || "EXPENSE",
+      category_id: recurring.category_id || "",
+      amount: recurring.amount || "",
+      frequency: recurring.frequency || "MONTHLY",
+      next_run_date: recurring.next_run_date || getToday(),
     });
     setOpen(true);
   };
@@ -373,36 +384,59 @@ const SavingsPage = () => {
   const handleClose = () => {
     if (!saving) {
       setOpen(false);
-      setEditingGoal(null);
+      setEditingRecurring(null);
     }
   };
 
   const handleChange = (event) => {
+    const { name, value } = event.target;
+
+    if (name === "transaction_type") {
+      setFormData({
+        ...formData,
+        transaction_type: value,
+        category_id: "",
+      });
+      return;
+    }
+
     setFormData({
       ...formData,
-      [event.target.name]: event.target.value,
+      value,
     });
   };
 
   const validateForm = () => {
-    if (!formData.goal_name.trim()) {
-      return "Goal name is required";
+    if (!formData.transaction_type) {
+      return "Please select transaction type";
     }
 
-    if (!formData.target_amount || Number(formData.target_amount) <= 0) {
-      return "Target amount must be greater than zero";
+    if (!["INCOME", "EXPENSE"].includes(formData.transaction_type)) {
+      return "Transaction type must be INCOME or EXPENSE";
     }
 
-    if (formData.current_amount === "" || Number(formData.current_amount) < 0) {
-      return "Current amount cannot be negative";
+    if (!formData.category_id) {
+      return "Please select a category";
     }
 
-    if (Number(formData.current_amount) > Number(formData.target_amount) * 2) {
-      return "Current amount looks too high compared to target amount";
+    if (!formData.amount || Number(formData.amount) <= 0) {
+      return "Amount must be greater than zero";
     }
 
-    if (!formData.target_date) {
-      return "Target date is required";
+    if (!formData.frequency) {
+      return "Please select frequency";
+    }
+
+    if (!frequencies.includes(formData.frequency)) {
+      return "Invalid frequency selected";
+    }
+
+    if (!formData.next_run_date) {
+      return "Next run date is required";
+    }
+
+    if (formData.next_run_date < getToday()) {
+      return "Next run date cannot be in the past";
     }
 
     return "";
@@ -421,16 +455,17 @@ const SavingsPage = () => {
 
     try {
       const payload = {
-        goal_name: formData.goal_name.trim(),
-        target_amount: formData.target_amount,
-        current_amount: formData.current_amount,
-        target_date: formData.target_date,
+        transaction_type: formData.transaction_type,
+        category_id: formData.category_id,
+        amount: formData.amount,
+        frequency: formData.frequency,
+        next_run_date: formData.next_run_date,
       };
 
-      if (editingGoal) {
-        await editGoal(editingGoal.goal_id, payload);
+      if (editingRecurring) {
+        await editRecurring(editingRecurring.recurring_id, payload);
       } else {
-        await addGoal(payload);
+        await addRecurring(payload);
       }
 
       handleClose();
@@ -443,20 +478,20 @@ const SavingsPage = () => {
     if (!deleteTarget) return;
 
     try {
-      await removeGoal(deleteTarget.goal_id);
+      await removeRecurring(deleteTarget.recurring_id);
       setDeleteTarget(null);
     } catch {
-      // Hook handles error
+      // Hook already handles error
     }
   };
 
   return (
     <Box>
       <PageHeader
-        title="Savings Goals"
-        subtitle="Plan, track and complete personal savings goals with clear progress insights."
-        breadcrumbs={["Finance", "Savings Goals"]}
-        actionText="Add Goal"
+        title="Recurring Transactions"
+        subtitle="Manage repeated income, rent, bills, subscriptions, EMI and other scheduled transactions."
+        breadcrumbs={["Finance", "Recurring Transactions"]}
+        actionText="Add Recurring"
         onAction={handleOpenAdd}
       />
 
@@ -470,7 +505,7 @@ const SavingsPage = () => {
         <Grid item xs={12} md={3}>
           <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
-              <Stack direction="row" alignItems="center" spacing={2}>
+              <Stack direction="row" spacing={2} alignItems="center">
                 <Box
                   sx={{
                     width: 50,
@@ -480,18 +515,18 @@ const SavingsPage = () => {
                     alignItems: "center",
                     justifyContent: "center",
                     color: "white",
-                    background: "linear-gradient(135deg, #7c3aed, #2563eb)",
+                    background: "linear-gradient(135deg, #2563eb, #7c3aed)",
                   }}
                 >
-                  <SavingsIcon />
+                  <RepeatIcon />
                 </Box>
 
                 <Box>
                   <Typography color="text.secondary" fontWeight={700}>
-                    Total Target
+                    Active Recurring
                   </Typography>
                   <Typography variant="h5" fontWeight={900}>
-                    {formatCurrency(totalTargetAmount)}
+                    {recurringList.length}
                   </Typography>
                 </Box>
               </Stack>
@@ -503,13 +538,13 @@ const SavingsPage = () => {
           <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
               <Typography color="text.secondary" fontWeight={700}>
-                Total Saved
+                Monthly Income Estimate
               </Typography>
               <Typography variant="h5" fontWeight={900} color="success.main">
-                {formatCurrency(totalSavedAmount)}
+                {formatCurrency(totalRecurringIncome)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Across all active goals.
+                Converted from all recurring income.
               </Typography>
             </CardContent>
           </Card>
@@ -519,17 +554,14 @@ const SavingsPage = () => {
           <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
               <Typography color="text.secondary" fontWeight={700}>
-                Overall Progress
+                Monthly Expense Estimate
               </Typography>
-              <Typography variant="h5" fontWeight={900}>
-                {overallProgress.toFixed(1)}%
+              <Typography variant="h5" fontWeight={900} color="error.main">
+                {formatCurrency(totalRecurringExpense)}
               </Typography>
-              <LinearProgress
-                variant="determinate"
-                value={Math.min(overallProgress, 100)}
-                color={overallProgress >= 100 ? "success" : "primary"}
-                sx={{ height: 8, borderRadius: 10, mt: 1.5 }}
-              />
+              <Typography variant="body2" color="text.secondary">
+                Converted from all recurring expenses.
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -538,13 +570,13 @@ const SavingsPage = () => {
           <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
               <Typography color="text.secondary" fontWeight={700}>
-                Completed Goals
+                Due in 7 Days
               </Typography>
-              <Typography variant="h5" fontWeight={900} color="success.main">
-                {completedGoalsCount}
+              <Typography variant="h5" fontWeight={900} color="warning.main">
+                {upcomingCount}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Goals reached successfully.
+                Upcoming scheduled transactions.
               </Typography>
             </CardContent>
           </Card>
@@ -560,18 +592,47 @@ const SavingsPage = () => {
             mb={3}
           >
             <TextField
-              label="Search goals"
+              label="Search recurring transactions"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               size="small"
               sx={{ minWidth: { xs: "100%", md: 320 } }}
             />
 
-            <Stack direction="row" spacing={2}>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Type</InputLabel>
+                <Select
+                  label="Type"
+                  value={typeFilter}
+                  onChange={(event) => setTypeFilter(event.target.value)}
+                >
+                  <MenuItem value="ALL">All Types</MenuItem>
+                  <MenuItem value="INCOME">Income</MenuItem>
+                  <MenuItem value="EXPENSE">Expense</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Frequency</InputLabel>
+                <Select
+                  label="Frequency"
+                  value={frequencyFilter}
+                  onChange={(event) => setFrequencyFilter(event.target.value)}
+                >
+                  <MenuItem value="ALL">All</MenuItem>
+                  {frequencies.map((frequency) => (
+                    <MenuItem key={frequency} value={frequency}>
+                      {frequency}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
               <Button
                 variant="outlined"
                 startIcon={<RefreshIcon />}
-                onClick={fetchGoals}
+                onClick={fetchRecurring}
               >
                 Refresh
               </Button>
@@ -581,16 +642,16 @@ const SavingsPage = () => {
                 startIcon={<AddIcon />}
                 onClick={handleOpenAdd}
               >
-                Add Goal
+                Add
               </Button>
             </Stack>
           </Stack>
 
-          {loading ? (
+          {loading || categoryLoading ? (
             <Box display="flex" justifyContent="center" py={6}>
               <CircularProgress />
             </Box>
-          ) : filteredGoals.length === 0 ? (
+          ) : categories.length === 0 ? (
             <Box
               sx={{
                 py: 8,
@@ -601,11 +662,29 @@ const SavingsPage = () => {
               }}
             >
               <Typography variant="h6" fontWeight={900}>
-                No savings goals found
+                No categories found
               </Typography>
 
               <Typography color="text.secondary" mt={1}>
-                Create your first goal to start tracking your savings journey.
+                Please create income or expense categories before adding recurring transactions.
+              </Typography>
+            </Box>
+          ) : filteredRecurring.length === 0 ? (
+            <Box
+              sx={{
+                py: 8,
+                textAlign: "center",
+                border: "1px dashed",
+                borderColor: "divider",
+                borderRadius: 3,
+              }}
+            >
+              <Typography variant="h6" fontWeight={900}>
+                No recurring transactions found
+              </Typography>
+
+              <Typography color="text.secondary" mt={1}>
+                Add your first recurring income, rent, subscription or bill.
               </Typography>
 
               <Button
@@ -614,22 +693,17 @@ const SavingsPage = () => {
                 sx={{ mt: 3 }}
                 onClick={handleOpenAdd}
               >
-                Add Savings Goal
+                Add Recurring Transaction
               </Button>
             </Box>
           ) : (
-            <Grid container spacing={3}>
-              {filteredGoals.map((goal) => {
-                const progress = getProgress(goal.current_amount, goal.target_amount);
-                const remainingAmount = getRemainingAmount(
-                  goal.current_amount,
-                  goal.target_amount
-                );
-                const daysRemaining = getDaysRemaining(goal.target_date);
-                const status = getGoalStatus(goal);
+            <Grid container spacing={2}>
+              {filteredRecurring.map((item) => {
+                const isIncome = item.transaction_type === "INCOME";
+                const daysUntilRun = getDaysUntilRun(item.next_run_date);
 
                 return (
-                  <Grid item xs={12} md={6} lg={4} key={goal.goal_id}>
+                  <Grid item xs={12} md={6} lg={4} key={item.recurring_id}>
                     <Card
                       elevation={0}
                       sx={{
@@ -659,122 +733,89 @@ const SavingsPage = () => {
                               alignItems: "center",
                               justifyContent: "center",
                               color: "white",
-                              background:
-                                status.label === "COMPLETED"
-                                  ? "linear-gradient(135deg, #16a34a, #22c55e)"
-                                  : "linear-gradient(135deg, #7c3aed, #2563eb)",
+                              background: isIncome
+                                ? "linear-gradient(135deg, #16a34a, #22c55e)"
+                                : "linear-gradient(135deg, #dc2626, #ef4444)",
                             }}
                           >
-                            {status.label === "COMPLETED" ? (
-                              <CheckCircleIcon />
-                            ) : (
-                              <FlagIcon />
-                            )}
+                            {isIncome ? <TrendingUpIcon /> : <ReceiptLongIcon />}
                           </Box>
 
                           <Chip
-                            label={status.label}
-                            color={status.color}
+                            label={item.transaction_type}
+                            color={isIncome ? "success" : "error"}
                             size="small"
                             sx={{ fontWeight: 800 }}
                           />
                         </Stack>
 
                         <Typography variant="h6" fontWeight={900}>
-                          {goal.goal_name}
+                          {getCategoryName(item.category_id)}
                         </Typography>
 
-                        <Stack spacing={1.2} mt={2}>
-                          <Stack direction="row" justifyContent="space-between">
-                            <Typography color="text.secondary">
-                              Saved
-                            </Typography>
-                            <Typography fontWeight={900} color="success.main">
-                              {formatCurrency(goal.current_amount)}
-                            </Typography>
-                          </Stack>
+                        <Typography
+                          variant="h5"
+                          fontWeight={900}
+                          color={isIncome ? "success.main" : "error.main"}
+                          mt={1}
+                        >
+                          {formatCurrency(item.amount)}
+                        </Typography>
 
-                          <Stack direction="row" justifyContent="space-between">
-                            <Typography color="text.secondary">
-                              Target
-                            </Typography>
-                            <Typography fontWeight={900}>
-                              {formatCurrency(goal.target_amount)}
-                            </Typography>
-                          </Stack>
+                        <Stack direction="row" spacing={1} flexWrap="wrap" mt={2}>
+                          <Chip
+                            label={item.frequency}
+                            color="primary"
+                            size="small"
+                            variant="outlined"
+                          />
 
-                          <Stack direction="row" justifyContent="space-between">
-                            <Typography color="text.secondary">
-                              Remaining
-                            </Typography>
-                            <Typography fontWeight={900}>
-                              {formatCurrency(remainingAmount)}
-                            </Typography>
-                          </Stack>
+                          <Chip
+                            label={`Monthly eq. ${formatCurrency(
+                              getMonthlyEquivalent(item.amount, item.frequency)
+                            )}`}
+                            size="small"
+                          />
                         </Stack>
 
-                        <Box mt={2}>
-                          <Stack direction="row" justifyContent="space-between" mb={0.8}>
-                            <Typography variant="body2" fontWeight={800}>
-                              Progress
-                            </Typography>
-                            <Typography variant="body2" fontWeight={900}>
-                              {progress.toFixed(1)}%
-                            </Typography>
-                          </Stack>
-
-                          <LinearProgress
-                            variant="determinate"
-                            value={Math.min(progress, 100)}
-                            color={progress >= 100 ? "success" : "primary"}
-                            sx={{ height: 10, borderRadius: 10 }}
-                          />
-                        </Box>
-
-                        <Stack
-                          direction="row"
-                          alignItems="center"
-                          spacing={1}
-                          mt={2}
-                          color="text.secondary"
-                        >
-                          <EventIcon fontSize="small" />
-                          <Typography variant="body2">
-                            Target: {formatDate(goal.target_date)}
+                        <Stack direction="row" spacing={1} alignItems="center" mt={2}>
+                          <CalendarMonthIcon fontSize="small" color="action" />
+                          <Typography variant="body2" color="text.secondary">
+                            Next run: {formatDate(item.next_run_date)}
                           </Typography>
                         </Stack>
 
-                        {daysRemaining !== null && (
+                        {daysUntilRun !== null && (
                           <Typography
                             variant="body2"
                             mt={1}
                             color={
-                              status.label === "COMPLETED"
-                                ? "success.main"
-                                : daysRemaining < 0
+                              daysUntilRun < 0
                                 ? "error.main"
+                                : daysUntilRun <= 7
+                                ? "warning.main"
                                 : "text.secondary"
                             }
                           >
-                            {status.label === "COMPLETED"
-                              ? "Goal completed"
-                              : daysRemaining < 0
-                              ? `${Math.abs(daysRemaining)} day(s) overdue`
-                              : `${daysRemaining} day(s) remaining`}
+                            {daysUntilRun < 0
+                              ? `${Math.abs(daysUntilRun)} day(s) overdue`
+                              : daysUntilRun === 0
+                              ? "Due today"
+                              : `${daysUntilRun} day(s) remaining`}
                           </Typography>
                         )}
 
                         <Stack direction="row" spacing={1} mt={3}>
-                          <Tooltip title="Edit goal">
-                            <IconButton onClick={() => handleOpenEdit(goal)}>
+                          <Tooltip title="Edit recurring transaction">
+                            <IconButton onClick={() => handleOpenEdit(item)}>
                               <EditIcon />
                             </IconButton>
                           </Tooltip>
 
-                          <Tooltip title="Delete goal">
+                          <Tooltip title="Delete recurring transaction">
                             <IconButton
                               color="error"
-                              onClick={() => setDeleteTarget(goal)}
+                              onClick={() => setDeleteTarget(item)}
                             >
                               <DeleteIcon />
                             </IconButton>
@@ -792,7 +833,9 @@ const SavingsPage = () => {
 
       <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
         <DialogTitle fontWeight={900}>
-          {editingGoal ? "Edit Savings Goal" : "Add Savings Goal"}
+          {editingRecurring
+            ? "Edit Recurring Transaction"
+            : "Add Recurring Transaction"}
         </DialogTitle>
 
         <Box component="form" onSubmit={handleSubmit}>
@@ -803,56 +846,95 @@ const SavingsPage = () => {
               </Alert>
             )}
 
-            <TextField
-              label="Goal Name"
-              name="goal_name"
-              value={formData.goal_name}
-              onChange={handleChange}
-              fullWidth
-              required
-              margin="normal"
-              placeholder="Example: Emergency Fund, Laptop, Vacation"
-            />
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Transaction Type</InputLabel>
+              <Select
+                label="Transaction Type"
+                name="transaction_type"
+                value={formData.transaction_type}
+                onChange={handleChange}
+              >
+                <MenuItem value="INCOME">Income</MenuItem>
+                <MenuItem value="EXPENSE">Expense</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Category</InputLabel>
+              <Select
+                label="Category"
+                name="category_id"
+                value={formData.category_id}
+                onChange={handleChange}
+              >
+                {availableCategories.map((category) => (
+                  <MenuItem
+                    key={category.category_id}
+                    value={category.category_id}
+                  >
+                    {category.category_name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {formData.transaction_type === "INCOME" &&
+              incomeCategories.length === 0 && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Create at least one INCOME category before adding recurring income.
+                </Alert>
+              )}
+
+            {formData.transaction_type === "EXPENSE" &&
+              expenseCategories.length === 0 && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Create at least one EXPENSE category before adding recurring expense.
+                </Alert>
+              )}
 
             <TextField
-              label="Target Amount"
-              name="target_amount"
+              label="Amount"
+              name="amount"
               type="number"
-              value={formData.target_amount}
+              value={formData.amount}
               onChange={handleChange}
               fullWidth
               required
               margin="normal"
               inputProps={{ min: 1, step: "0.01" }}
               InputProps={{
-                startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+                startAdornment: (
+                  <InputAdornment position="start">₹</InputAdornment>
+                ),
               }}
             />
 
-            <TextField
-              label="Current Saved Amount"
-              name="current_amount"
-              type="number"
-              value={formData.current_amount}
-              onChange={handleChange}
-              fullWidth
-              required
-              margin="normal"
-              inputProps={{ min: 0, step: "0.01" }}
-              InputProps={{
-                startAdornment: <InputAdornment position="start">₹</InputAdornment>,
-              }}
-            />
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Frequency</InputLabel>
+              <Select
+                label="Frequency"
+                name="frequency"
+                value={formData.frequency}
+                onChange={handleChange}
+              >
+                {frequencies.map((frequency) => (
+                  <MenuItem key={frequency} value={frequency}>
+                    {frequency}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
             <TextField
-              label="Target Date"
-              name="target_date"
+              label="Next Run Date"
+              name="next_run_date"
               type="date"
-              value={formData.target_date}
+              value={formData.next_run_date}
               onChange={handleChange}
               fullWidth
               required
               margin="normal"
+              inputProps={{ min: getToday() }}
               InputLabelProps={{ shrink: true }}
             />
           </DialogContent>
@@ -865,9 +947,9 @@ const SavingsPage = () => {
             <Button type="submit" variant="contained" disabled={saving}>
               {saving
                 ? "Saving..."
-                : editingGoal
-                ? "Update Goal"
-                : "Create Goal"}
+                : editingRecurring
+                ? "Update Recurring"
+                : "Create Recurring"}
             </Button>
           </DialogActions>
         </Box>
@@ -879,11 +961,13 @@ const SavingsPage = () => {
         fullWidth
         maxWidth="xs"
       >
-        <DialogTitle fontWeight={900}>Delete Savings Goal</DialogTitle>
+        <DialogTitle fontWeight={900}>
+          Delete Recurring Transaction
+        </DialogTitle>
 
         <DialogContent>
           <Typography>
-            Are you sure you want to delete this savings goal?
+            Are you sure you want to delete this recurring transaction?
           </Typography>
 
           {deleteTarget && (
@@ -896,12 +980,19 @@ const SavingsPage = () => {
               }}
             >
               <Typography fontWeight={900}>
-                {deleteTarget.goal_name}
+                {getCategoryName(deleteTarget.category_id)}
               </Typography>
 
-              <Typography color="success.main" fontWeight={900}>
-                {formatCurrency(deleteTarget.current_amount)} saved of{" "}
-                {formatCurrency(deleteTarget.target_amount)}
+              <Typography
+                fontWeight={900}
+                color={
+                  deleteTarget.transaction_type === "INCOME"
+                    ? "success.main"
+                    : "error.main"
+                }
+              >
+                {formatCurrency(deleteTarget.amount)} /{" "}
+                {deleteTarget.frequency}
               </Typography>
             </Box>
           )}
@@ -926,5 +1017,5 @@ const SavingsPage = () => {
   );
 };
 
-export default SavingsPage;
-------------------------------------
+export default RecurringPage;
+-----------------------------------------
