@@ -1,113 +1,78 @@
 import api from "./axios";
 
-export const getBudgets = async () => {
-  const response = await api.get("/budget/");
+export const getSavingsGoals = async () => {
+  const response = await api.get("/savings/");
   return response.data;
 };
 
-export const createBudget = async (data) => {
-  const response = await api.post("/budget/", data);
+export const createSavingsGoal = async (data) => {
+  const response = await api.post("/savings/", data);
   return response.data;
 };
 
-export const updateBudget = async (budgetId, data) => {
-  const response = await api.put(`/budget/${budgetId}`, data);
+export const updateSavingsGoal = async (goalId, data) => {
+  const response = await api.put(`/savings/${goalId}`, data);
   return response.data;
 };
 
-export const deleteBudget = async (budgetId) => {
-  const response = await api.delete(`/budget/${budgetId}`);
+export const deleteSavingsGoal = async (goalId) => {
+  const response = await api.delete(`/savings/${goalId}`);
   return response.data;
 };
 
-export const getBudgetSummary = async (userId) => {
-  const response = await api.get(`/budget/summary/${userId}`);
+export const getSavingsGoalProgress = async (goalId) => {
+  const response = await api.get(`/savings/progress/${goalId}`);
   return response.data;
 };
-
-export const getBudgetCategorySummary = async (userId) => {
-  const response = await api.get(`/budget/category-summary/${userId}`);
-  return response.data;
-};
--------------------------------------------
+--------------------------------
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  createBudget,
-  deleteBudget,
-  getBudgetCategorySummary,
-  getBudgets,
-  getBudgetSummary,
-  updateBudget,
-} from "../api/budgetApi";
+  createSavingsGoal,
+  deleteSavingsGoal,
+  getSavingsGoalProgress,
+  getSavingsGoals,
+  updateSavingsGoal,
+} from "../api/savingsApi";
 import { getUserIdFromToken } from "../utils/jwt";
 
-const useBudget = () => {
-  const [budgets, setBudgets] = useState([]);
-  const [summary, setSummary] = useState(null);
-  const [categorySummary, setCategorySummary] = useState([]);
+const useSavings = () => {
+  const [goals, setGoals] = useState([]);
+  const [selectedProgress, setSelectedProgress] = useState(null);
 
   const [loading, setLoading] = useState(false);
-  const [summaryLoading, setSummaryLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [progressLoading, setProgressLoading] = useState(false);
 
   const [error, setError] = useState("");
 
   const userId = useMemo(() => getUserIdFromToken(), []);
 
-  const fetchBudgets = useCallback(async () => {
+  const fetchGoals = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const data = await getBudgets();
+      const data = await getSavingsGoals();
       const list = Array.isArray(data) ? data : [];
 
-      const userSpecificBudgets = userId
-        ? list.filter((item) => Number(item.user_id) === Number(userId))
+      const userSpecificGoals = userId
+        ? list.filter((goal) => Number(goal.user_id) === Number(userId))
         : list;
 
-      setBudgets(userSpecificBudgets);
+      setGoals(userSpecificGoals);
     } catch (err) {
       setError(
         err.response?.data?.detail ||
           err.response?.data?.message ||
-          "Failed to load budget records"
+          "Failed to load savings goals"
       );
     } finally {
       setLoading(false);
     }
   }, [userId]);
 
-  const fetchBudgetInsights = useCallback(async () => {
-    if (!userId) return;
-
-    setSummaryLoading(true);
-
-    try {
-      const [summaryData, categorySummaryData] = await Promise.all([
-        getBudgetSummary(userId),
-        getBudgetCategorySummary(userId),
-      ]);
-
-      setSummary(summaryData);
-      setCategorySummary(
-        Array.isArray(categorySummaryData) ? categorySummaryData : []
-      );
-    } catch {
-      setSummary(null);
-      setCategorySummary([]);
-    } finally {
-      setSummaryLoading(false);
-    }
-  }, [userId]);
-
-  const refreshBudgetData = useCallback(async () => {
-    await fetchBudgets();
-    await fetchBudgetInsights();
-  }, [fetchBudgets, fetchBudgetInsights]);
-
-  const addBudget = async (payload) => {
+  const addGoal = async (payload) => {
     setSaving(true);
     setError("");
 
@@ -116,21 +81,21 @@ const useBudget = () => {
         throw new Error("User ID not found in token. Please login again.");
       }
 
-      await createBudget({
+      await createSavingsGoal({
         user_id: Number(userId),
-        category_id: Number(payload.category_id),
-        month: Number(payload.month),
-        year: Number(payload.year),
-        budget_amount: Number(payload.budget_amount),
+        goal_name: payload.goal_name,
+        target_amount: Number(payload.target_amount),
+        current_amount: Number(payload.current_amount),
+        target_date: payload.target_date,
       });
 
-      await refreshBudgetData();
+      await fetchGoals();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
         err.message ||
-        "Failed to create budget";
+        "Failed to create savings goal";
 
       setError(message);
       throw new Error(message);
@@ -139,24 +104,24 @@ const useBudget = () => {
     }
   };
 
-  const editBudget = async (budgetId, payload) => {
+  const editGoal = async (goalId, payload) => {
     setSaving(true);
     setError("");
 
     try {
-      await updateBudget(budgetId, {
-        category_id: Number(payload.category_id),
-        month: Number(payload.month),
-        year: Number(payload.year),
-        budget_amount: Number(payload.budget_amount),
+      await updateSavingsGoal(goalId, {
+        goal_name: payload.goal_name,
+        target_amount: Number(payload.target_amount),
+        current_amount: Number(payload.current_amount),
+        target_date: payload.target_date,
       });
 
-      await refreshBudgetData();
+      await fetchGoals();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
-        "Failed to update budget";
+        "Failed to update savings goal";
 
       setError(message);
       throw new Error(message);
@@ -165,18 +130,18 @@ const useBudget = () => {
     }
   };
 
-  const removeBudget = async (budgetId) => {
+  const removeGoal = async (goalId) => {
     setDeleting(true);
     setError("");
 
     try {
-      await deleteBudget(budgetId);
-      await refreshBudgetData();
+      await deleteSavingsGoal(goalId);
+      await fetchGoals();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
-        "Failed to delete budget";
+        "Failed to delete savings goal";
 
       setError(message);
       throw new Error(message);
@@ -185,29 +150,50 @@ const useBudget = () => {
     }
   };
 
+  const fetchGoalProgress = async (goalId) => {
+    setProgressLoading(true);
+    setSelectedProgress(null);
+
+    try {
+      const data = await getSavingsGoalProgress(goalId);
+      setSelectedProgress(data);
+      return data;
+    } catch (err) {
+      const message =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "Failed to load goal progress";
+
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setProgressLoading(false);
+    }
+  };
+
   useEffect(() => {
-    refreshBudgetData();
-  }, [refreshBudgetData]);
+    fetchGoals();
+  }, [fetchGoals]);
 
   return {
-    budgets,
-    summary,
-    categorySummary,
+    goals,
+    selectedProgress,
     loading,
-    summaryLoading,
     saving,
     deleting,
+    progressLoading,
     error,
     userId,
-    refreshBudgetData,
-    addBudget,
-    editBudget,
-    removeBudget,
+    fetchGoals,
+    addGoal,
+    editGoal,
+    removeGoal,
+    fetchGoalProgress,
   };
 };
 
-export default useBudget;
------------------------------------------
+export default useSavings;
+---------------------------------------
 import { useMemo, useState } from "react";
 import {
   Alert,
@@ -221,47 +207,27 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
   Grid,
   IconButton,
   InputAdornment,
-  InputLabel,
   LinearProgress,
-  MenuItem,
-  Select,
   Stack,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
-import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import SavingsIcon from "@mui/icons-material/Savings";
 import AddIcon from "@mui/icons-material/Add";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import SavingsIcon from "@mui/icons-material/Savings";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import FlagIcon from "@mui/icons-material/Flag";
+import EventIcon from "@mui/icons-material/Event";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import PageHeader from "../../components/common/PageHeader";
-import useBudget from "../../hooks/useBudget";
-import useCategories from "../../hooks/useCategories";
+import useSavings from "../../hooks/useSavings";
 
-const monthNames = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-
-const getCurrentMonth = () => new Date().getMonth() + 1;
-const getCurrentYear = () => new Date().getFullYear();
+const getToday = () => new Date().toISOString().slice(0, 10);
 
 const formatCurrency = (value) => {
   return new Intl.NumberFormat("en-IN", {
@@ -271,122 +237,135 @@ const formatCurrency = (value) => {
   }).format(Number(value || 0));
 };
 
-const BudgetPage = () => {
+const formatDate = (value) => {
+  if (!value) return "-";
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+};
+
+const getProgress = (currentAmount, targetAmount) => {
+  if (!targetAmount || Number(targetAmount) <= 0) return 0;
+  return (Number(currentAmount || 0) / Number(targetAmount)) * 100;
+};
+
+const getRemainingAmount = (currentAmount, targetAmount) => {
+  return Math.max(Number(targetAmount || 0) - Number(currentAmount || 0), 0);
+};
+
+const getDaysRemaining = (targetDate) => {
+  if (!targetDate) return null;
+
+  const today = new Date();
+  const target = new Date(targetDate);
+
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+
+  const difference = target.getTime() - today.getTime();
+  return Math.ceil(difference / (1000 * 60 * 60 * 24));
+};
+
+const getGoalStatus = (goal) => {
+  const progress = getProgress(goal.current_amount, goal.target_amount);
+  const daysRemaining = getDaysRemaining(goal.target_date);
+
+  if (progress >= 100 || goal.status === "COMPLETED") {
+    return {
+      label: "COMPLETED",
+      color: "success",
+    };
+  }
+
+  if (daysRemaining !== null && daysRemaining < 0) {
+    return {
+      label: "OVERDUE",
+      color: "error",
+    };
+  }
+
+  return {
+    label: "IN PROGRESS",
+    color: "primary",
+  };
+};
+
+const SavingsPage = () => {
   const {
-    budgets,
-    summary,
-    categorySummary,
+    goals,
     loading,
-    summaryLoading,
     saving,
     deleting,
     error,
-    refreshBudgetData,
-    addBudget,
-    editBudget,
-    removeBudget,
-  } = useBudget();
-
-  const { categories, loading: categoryLoading } = useCategories();
-
-  const expenseCategories = useMemo(() => {
-    return categories.filter(
-      (category) => category.category_type?.toUpperCase().trim() === "EXPENSE"
-    );
-  }, [categories]);
+    fetchGoals,
+    addGoal,
+    editGoal,
+    removeGoal,
+  } = useSavings();
 
   const [open, setOpen] = useState(false);
-  const [editingBudget, setEditingBudget] = useState(null);
+  const [editingGoal, setEditingGoal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [formError, setFormError] = useState("");
-
   const [search, setSearch] = useState("");
-  const [monthFilter, setMonthFilter] = useState("ALL");
-  const [yearFilter, setYearFilter] = useState(String(getCurrentYear()));
 
   const [formData, setFormData] = useState({
-    category_id: "",
-    month: getCurrentMonth(),
-    year: getCurrentYear(),
-    budget_amount: "",
+    goal_name: "",
+    target_amount: "",
+    current_amount: "",
+    target_date: getToday(),
   });
 
-  const totalBudget = useMemo(() => {
-    return budgets.reduce(
-      (sum, budget) => sum + Number(budget.budget_amount || 0),
-      0
+  const totalTargetAmount = useMemo(() => {
+    return goals.reduce((sum, goal) => sum + Number(goal.target_amount || 0), 0);
+  }, [goals]);
+
+  const totalSavedAmount = useMemo(() => {
+    return goals.reduce((sum, goal) => sum + Number(goal.current_amount || 0), 0);
+  }, [goals]);
+
+  const completedGoalsCount = useMemo(() => {
+    return goals.filter(
+      (goal) =>
+        getProgress(goal.current_amount, goal.target_amount) >= 100 ||
+        goal.status === "COMPLETED"
+    ).length;
+  }, [goals]);
+
+  const overallProgress = useMemo(() => {
+    if (totalTargetAmount <= 0) return 0;
+    return (totalSavedAmount / totalTargetAmount) * 100;
+  }, [totalSavedAmount, totalTargetAmount]);
+
+  const filteredGoals = useMemo(() => {
+    return goals.filter((goal) =>
+      goal.goal_name?.toLowerCase().includes(search.toLowerCase())
     );
-  }, [budgets]);
-
-  const currentMonthBudget = useMemo(() => {
-    return budgets.reduce((sum, budget) => {
-      if (
-        Number(budget.month) === getCurrentMonth() &&
-        Number(budget.year) === getCurrentYear()
-      ) {
-        return sum + Number(budget.budget_amount || 0);
-      }
-
-      return sum;
-    }, 0);
-  }, [budgets]);
-
-  const filteredBudgets = useMemo(() => {
-    return budgets.filter((budget) => {
-      const category = expenseCategories.find(
-        (item) => Number(item.category_id) === Number(budget.category_id)
-      );
-
-      const categoryName = category?.category_name || "";
-
-      const matchesSearch = categoryName
-        .toLowerCase()
-        .includes(search.toLowerCase());
-
-      const matchesMonth =
-        monthFilter === "ALL" || Number(budget.month) === Number(monthFilter);
-
-      const matchesYear =
-        yearFilter === "ALL" || Number(budget.year) === Number(yearFilter);
-
-      return matchesSearch && matchesMonth && matchesYear;
-    });
-  }, [budgets, expenseCategories, search, monthFilter, yearFilter]);
-
-  const getCategoryName = (categoryId) => {
-    const category = expenseCategories.find(
-      (item) => Number(item.category_id) === Number(categoryId)
-    );
-
-    return category?.category_name || "Unknown Category";
-  };
-
-  const getUsageColor = (percentage) => {
-    if (percentage >= 90) return "error";
-    if (percentage >= 70) return "warning";
-    return "success";
-  };
+  }, [goals, search]);
 
   const handleOpenAdd = () => {
-    setEditingBudget(null);
+    setEditingGoal(null);
     setFormError("");
     setFormData({
-      category_id: "",
-      month: getCurrentMonth(),
-      year: getCurrentYear(),
-      budget_amount: "",
+      goal_name: "",
+      target_amount: "",
+      current_amount: "",
+      target_date: getToday(),
     });
     setOpen(true);
   };
 
-  const handleOpenEdit = (budget) => {
-    setEditingBudget(budget);
+  const handleOpenEdit = (goal) => {
+    setEditingGoal(goal);
     setFormError("");
     setFormData({
-      category_id: budget.category_id || "",
-      month: budget.month || getCurrentMonth(),
-      year: budget.year || getCurrentYear(),
-      budget_amount: budget.budget_amount || "",
+      goal_name: goal.goal_name || "",
+      target_amount: goal.target_amount || "",
+      current_amount: goal.current_amount || "",
+      target_date: goal.target_date || getToday(),
     });
     setOpen(true);
   };
@@ -394,7 +373,7 @@ const BudgetPage = () => {
   const handleClose = () => {
     if (!saving) {
       setOpen(false);
-      setEditingBudget(null);
+      setEditingGoal(null);
     }
   };
 
@@ -406,20 +385,24 @@ const BudgetPage = () => {
   };
 
   const validateForm = () => {
-    if (!formData.category_id) {
-      return "Please select an expense category";
+    if (!formData.goal_name.trim()) {
+      return "Goal name is required";
     }
 
-    if (!formData.month || Number(formData.month) < 1 || Number(formData.month) > 12) {
-      return "Please select a valid month";
+    if (!formData.target_amount || Number(formData.target_amount) <= 0) {
+      return "Target amount must be greater than zero";
     }
 
-    if (!formData.year || Number(formData.year) < 2024) {
-      return "Please enter a valid year";
+    if (formData.current_amount === "" || Number(formData.current_amount) < 0) {
+      return "Current amount cannot be negative";
     }
 
-    if (!formData.budget_amount || Number(formData.budget_amount) <= 0) {
-      return "Budget amount must be greater than zero";
+    if (Number(formData.current_amount) > Number(formData.target_amount) * 2) {
+      return "Current amount looks too high compared to target amount";
+    }
+
+    if (!formData.target_date) {
+      return "Target date is required";
     }
 
     return "";
@@ -438,16 +421,16 @@ const BudgetPage = () => {
 
     try {
       const payload = {
-        category_id: formData.category_id,
-        month: formData.month,
-        year: formData.year,
-        budget_amount: formData.budget_amount,
+        goal_name: formData.goal_name.trim(),
+        target_amount: formData.target_amount,
+        current_amount: formData.current_amount,
+        target_date: formData.target_date,
       };
 
-      if (editingBudget) {
-        await editBudget(editingBudget.budget_id, payload);
+      if (editingGoal) {
+        await editGoal(editingGoal.goal_id, payload);
       } else {
-        await addBudget(payload);
+        await addGoal(payload);
       }
 
       handleClose();
@@ -460,23 +443,20 @@ const BudgetPage = () => {
     if (!deleteTarget) return;
 
     try {
-      await removeBudget(deleteTarget.budget_id);
+      await removeGoal(deleteTarget.goal_id);
       setDeleteTarget(null);
     } catch {
-      // Hook already handles error
+      // Hook handles error
     }
   };
-
-  const utilization = Number(summary?.utilization_percentage || 0);
-  const remainingBudget = Number(summary?.remaining_budget || 0);
 
   return (
     <Box>
       <PageHeader
-        title="Budget Planning"
-        subtitle="Create monthly category-wise budgets and monitor spending utilization."
-        breadcrumbs={["Finance", "Budgets"]}
-        actionText="Add Budget"
+        title="Savings Goals"
+        subtitle="Plan, track and complete personal savings goals with clear progress insights."
+        breadcrumbs={["Finance", "Savings Goals"]}
+        actionText="Add Goal"
         onAction={handleOpenAdd}
       />
 
@@ -490,28 +470,28 @@ const BudgetPage = () => {
         <Grid item xs={12} md={3}>
           <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
-              <Stack direction="row" spacing={2} alignItems="center">
+              <Stack direction="row" alignItems="center" spacing={2}>
                 <Box
                   sx={{
                     width: 50,
                     height: 50,
                     borderRadius: 3,
-                    color: "white",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    background: "linear-gradient(135deg, #2563eb, #7c3aed)",
+                    color: "white",
+                    background: "linear-gradient(135deg, #7c3aed, #2563eb)",
                   }}
                 >
-                  <AccountBalanceWalletIcon />
+                  <SavingsIcon />
                 </Box>
 
                 <Box>
                   <Typography color="text.secondary" fontWeight={700}>
-                    Total Budget
+                    Total Target
                   </Typography>
                   <Typography variant="h5" fontWeight={900}>
-                    {formatCurrency(summary?.total_budget ?? totalBudget)}
+                    {formatCurrency(totalTargetAmount)}
                   </Typography>
                 </Box>
               </Stack>
@@ -523,13 +503,13 @@ const BudgetPage = () => {
           <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
               <Typography color="text.secondary" fontWeight={700}>
-                Total Expense
+                Total Saved
               </Typography>
-              <Typography variant="h5" fontWeight={900} color="error.main">
-                {formatCurrency(summary?.total_expense || 0)}
+              <Typography variant="h5" fontWeight={900} color="success.main">
+                {formatCurrency(totalSavedAmount)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Based on recorded expenses.
+                Across all active goals.
               </Typography>
             </CardContent>
           </Card>
@@ -539,331 +519,280 @@ const BudgetPage = () => {
           <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
             <CardContent>
               <Typography color="text.secondary" fontWeight={700}>
-                Remaining Budget
-              </Typography>
-              <Typography
-                variant="h5"
-                fontWeight={900}
-                color={remainingBudget < 0 ? "error.main" : "success.main"}
-              >
-                {formatCurrency(remainingBudget)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Available budget balance.
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={3}>
-          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-            <CardContent>
-              <Typography color="text.secondary" fontWeight={700}>
-                Current Month Budget
+                Overall Progress
               </Typography>
               <Typography variant="h5" fontWeight={900}>
-                {formatCurrency(currentMonthBudget)}
+                {overallProgress.toFixed(1)}%
+              </Typography>
+              <LinearProgress
+                variant="determinate"
+                value={Math.min(overallProgress, 100)}
+                color={overallProgress >= 100 ? "success" : "primary"}
+                sx={{ height: 8, borderRadius: 10, mt: 1.5 }}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={3}>
+          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+            <CardContent>
+              <Typography color="text.secondary" fontWeight={700}>
+                Completed Goals
+              </Typography>
+              <Typography variant="h5" fontWeight={900} color="success.main">
+                {completedGoalsCount}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Budget planned for this month.
+                Goals reached successfully.
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} lg={8}>
-          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-            <CardContent>
-              <Stack
-                direction={{ xs: "column", md: "row" }}
-                justifyContent="space-between"
-                spacing={2}
-                mb={3}
+      <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+        <CardContent>
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            justifyContent="space-between"
+            spacing={2}
+            mb={3}
+          >
+            <TextField
+              label="Search goals"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              size="small"
+              sx={{ minWidth: { xs: "100%", md: 320 } }}
+            />
+
+            <Stack direction="row" spacing={2}>
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={fetchGoals}
               >
-                <TextField
-                  label="Search budget category"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  size="small"
-                  sx={{ minWidth: { xs: "100%", md: 280 } }}
-                />
+                Refresh
+              </Button>
 
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                  <FormControl size="small" sx={{ minWidth: 150 }}>
-                    <InputLabel>Month</InputLabel>
-                    <Select
-                      label="Month"
-                      value={monthFilter}
-                      onChange={(event) => setMonthFilter(event.target.value)}
-                    >
-                      <MenuItem value="ALL">All Months</MenuItem>
-                      {monthNames.map((month, index) => (
-                        <MenuItem key={month} value={index + 1}>
-                          {month}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleOpenAdd}
+              >
+                Add Goal
+              </Button>
+            </Stack>
+          </Stack>
 
-                  <TextField
-                    label="Year"
-                    size="small"
-                    value={yearFilter}
-                    onChange={(event) => setYearFilter(event.target.value || "ALL")}
-                    sx={{ width: 120 }}
-                  />
+          {loading ? (
+            <Box display="flex" justifyContent="center" py={6}>
+              <CircularProgress />
+            </Box>
+          ) : filteredGoals.length === 0 ? (
+            <Box
+              sx={{
+                py: 8,
+                textAlign: "center",
+                border: "1px dashed",
+                borderColor: "divider",
+                borderRadius: 3,
+              }}
+            >
+              <Typography variant="h6" fontWeight={900}>
+                No savings goals found
+              </Typography>
 
-                  <Button
-                    variant="outlined"
-                    startIcon={<RefreshIcon />}
-                    onClick={refreshBudgetData}
-                  >
-                    Refresh
-                  </Button>
+              <Typography color="text.secondary" mt={1}>
+                Create your first goal to start tracking your savings journey.
+              </Typography>
 
-                  <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={handleOpenAdd}
-                  >
-                    Add
-                  </Button>
-                </Stack>
-              </Stack>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                sx={{ mt: 3 }}
+                onClick={handleOpenAdd}
+              >
+                Add Savings Goal
+              </Button>
+            </Box>
+          ) : (
+            <Grid container spacing={3}>
+              {filteredGoals.map((goal) => {
+                const progress = getProgress(goal.current_amount, goal.target_amount);
+                const remainingAmount = getRemainingAmount(
+                  goal.current_amount,
+                  goal.target_amount
+                );
+                const daysRemaining = getDaysRemaining(goal.target_date);
+                const status = getGoalStatus(goal);
 
-              {loading || categoryLoading ? (
-                <Box display="flex" justifyContent="center" py={6}>
-                  <CircularProgress />
-                </Box>
-              ) : expenseCategories.length === 0 ? (
-                <Box
-                  sx={{
-                    py: 8,
-                    textAlign: "center",
-                    border: "1px dashed",
-                    borderColor: "divider",
-                    borderRadius: 3,
-                  }}
-                >
-                  <Typography variant="h6" fontWeight={900}>
-                    No expense category found
-                  </Typography>
-                  <Typography color="text.secondary" mt={1}>
-                    Please create at least one EXPENSE category before creating budgets.
-                  </Typography>
-                </Box>
-              ) : filteredBudgets.length === 0 ? (
-                <Box
-                  sx={{
-                    py: 8,
-                    textAlign: "center",
-                    border: "1px dashed",
-                    borderColor: "divider",
-                    borderRadius: 3,
-                  }}
-                >
-                  <Typography variant="h6" fontWeight={900}>
-                    No budgets found
-                  </Typography>
-                  <Typography color="text.secondary" mt={1}>
-                    Create your first monthly category budget.
-                  </Typography>
-
-                  <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    sx={{ mt: 3 }}
-                    onClick={handleOpenAdd}
-                  >
-                    Add Budget
-                  </Button>
-                </Box>
-              ) : (
-                <Stack spacing={2}>
-                  {filteredBudgets.map((budget) => (
+                return (
+                  <Grid item xs={12} md={6} lg={4} key={goal.goal_id}>
                     <Card
-                      key={budget.budget_id}
                       elevation={0}
                       sx={{
+                        height: "100%",
                         border: "1px solid",
                         borderColor: "divider",
                         transition: "0.2s ease",
                         "&:hover": {
                           boxShadow: "0 14px 36px rgba(15, 23, 42, 0.12)",
-                          transform: "translateY(-2px)",
+                          transform: "translateY(-3px)",
                         },
                       }}
                     >
                       <CardContent>
                         <Stack
-                          direction={{ xs: "column", md: "row" }}
+                          direction="row"
                           justifyContent="space-between"
-                          alignItems={{ xs: "flex-start", md: "center" }}
-                          spacing={2}
+                          alignItems="flex-start"
+                          mb={2}
                         >
-                          <Stack direction="row" spacing={2} alignItems="center">
-                            <Box
-                              sx={{
-                                width: 46,
-                                height: 46,
-                                borderRadius: 3,
-                                backgroundColor: "primary.light",
-                                color: "primary.contrastText",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <SavingsIcon />
-                            </Box>
+                          <Box
+                            sx={{
+                              width: 48,
+                              height: 48,
+                              borderRadius: 3,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "white",
+                              background:
+                                status.label === "COMPLETED"
+                                  ? "linear-gradient(135deg, #16a34a, #22c55e)"
+                                  : "linear-gradient(135deg, #7c3aed, #2563eb)",
+                            }}
+                          >
+                            {status.label === "COMPLETED" ? (
+                              <CheckCircleIcon />
+                            ) : (
+                              <FlagIcon />
+                            )}
+                          </Box>
 
-                            <Box>
-                              <Typography variant="h6" fontWeight={900}>
-                                {getCategoryName(budget.category_id)}
-                              </Typography>
-
-                              <Stack direction="row" spacing={1} flexWrap="wrap" mt={0.5}>
-                                <Chip
-                                  label={`${monthNames[Number(budget.month) - 1]} ${budget.year}`}
-                                  color="primary"
-                                  size="small"
-                                />
-
-                                <Chip
-                                  label="Expense Budget"
-                                  color="error"
-                                  size="small"
-                                  variant="outlined"
-                                />
-                              </Stack>
-                            </Box>
-                          </Stack>
-
-                          <Stack direction="row" spacing={2} alignItems="center">
-                            <Typography variant="h6" fontWeight={900}>
-                              {formatCurrency(budget.budget_amount)}
-                            </Typography>
-
-                            <Tooltip title="Edit budget">
-                              <IconButton onClick={() => handleOpenEdit(budget)}>
-                                <EditIcon />
-                              </IconButton>
-                            </Tooltip>
-
-                            <Tooltip title="Delete budget">
-                              <IconButton
-                                color="error"
-                                onClick={() => setDeleteTarget(budget)}
-                              >
-                                <DeleteIcon />
-                              </IconButton>
-                            </Tooltip>
-                          </Stack>
+                          <Chip
+                            label={status.label}
+                            color={status.color}
+                            size="small"
+                            sx={{ fontWeight: 800 }}
+                          />
                         </Stack>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </Stack>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
 
-        <Grid item xs={12} lg={4}>
-          <Stack spacing={3}>
-            <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-              <CardContent>
-                <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                  <WarningAmberIcon color={getUsageColor(utilization)} />
-                  <Typography variant="h6" fontWeight={900}>
-                    Budget Utilization
-                  </Typography>
-                </Stack>
+                        <Typography variant="h6" fontWeight={900}>
+                          {goal.goal_name}
+                        </Typography>
 
-                {summaryLoading ? (
-                  <Box display="flex" justifyContent="center" py={4}>
-                    <CircularProgress size={28} />
-                  </Box>
-                ) : (
-                  <>
-                    <Typography variant="h4" fontWeight={900}>
-                      {utilization.toFixed(2)}%
-                    </Typography>
-
-                    <LinearProgress
-                      variant="determinate"
-                      value={Math.min(utilization, 100)}
-                      color={getUsageColor(utilization)}
-                      sx={{ height: 10, borderRadius: 10, mt: 2 }}
-                    />
-
-                    <Typography variant="body2" color="text.secondary" mt={1.5}>
-                      {utilization >= 100
-                        ? "You have crossed your planned budget."
-                        : utilization >= 70
-                        ? "You are close to your budget limit."
-                        : "Your spending is within a healthy range."}
-                    </Typography>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-              <CardContent>
-                <Typography variant="h6" fontWeight={900} mb={2}>
-                  Category Budget Summary
-                </Typography>
-
-                {categorySummary.length === 0 ? (
-                  <Typography color="text.secondary">
-                    Category-wise budget usage will appear after adding budgets and expenses.
-                  </Typography>
-                ) : (
-                  <Stack spacing={2}>
-                    {categorySummary.map((item) => {
-                      const used =
-                        Number(item.budget) > 0
-                          ? (Number(item.expense) / Number(item.budget)) * 100
-                          : 0;
-
-                      return (
-                        <Box key={item.category_name}>
+                        <Stack spacing={1.2} mt={2}>
                           <Stack direction="row" justifyContent="space-between">
-                            <Typography fontWeight={800}>
-                              {item.category_name}
+                            <Typography color="text.secondary">
+                              Saved
+                            </Typography>
+                            <Typography fontWeight={900} color="success.main">
+                              {formatCurrency(goal.current_amount)}
+                            </Typography>
+                          </Stack>
+
+                          <Stack direction="row" justifyContent="space-between">
+                            <Typography color="text.secondary">
+                              Target
                             </Typography>
                             <Typography fontWeight={900}>
-                              {formatCurrency(item.expense)} / {formatCurrency(item.budget)}
+                              {formatCurrency(goal.target_amount)}
+                            </Typography>
+                          </Stack>
+
+                          <Stack direction="row" justifyContent="space-between">
+                            <Typography color="text.secondary">
+                              Remaining
+                            </Typography>
+                            <Typography fontWeight={900}>
+                              {formatCurrency(remainingAmount)}
+                            </Typography>
+                          </Stack>
+                        </Stack>
+
+                        <Box mt={2}>
+                          <Stack direction="row" justifyContent="space-between" mb={0.8}>
+                            <Typography variant="body2" fontWeight={800}>
+                              Progress
+                            </Typography>
+                            <Typography variant="body2" fontWeight={900}>
+                              {progress.toFixed(1)}%
                             </Typography>
                           </Stack>
 
                           <LinearProgress
                             variant="determinate"
-                            value={Math.min(used, 100)}
-                            color={getUsageColor(used)}
-                            sx={{ height: 8, borderRadius: 10, mt: 1 }}
+                            value={Math.min(progress, 100)}
+                            color={progress >= 100 ? "success" : "primary"}
+                            sx={{ height: 10, borderRadius: 10 }}
                           />
-
-                          <Typography variant="caption" color="text.secondary">
-                            Remaining: {formatCurrency(item.remaining)}
-                          </Typography>
                         </Box>
-                      );
-                    })}
-                  </Stack>
-                )}
-              </CardContent>
-            </Card>
-          </Stack>
-        </Grid>
-      </Grid>
+
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          spacing={1}
+                          mt={2}
+                          color="text.secondary"
+                        >
+                          <EventIcon fontSize="small" />
+                          <Typography variant="body2">
+                            Target: {formatDate(goal.target_date)}
+                          </Typography>
+                        </Stack>
+
+                        {daysRemaining !== null && (
+                          <Typography
+                            variant="body2"
+                            mt={1}
+                            color={
+                              status.label === "COMPLETED"
+                                ? "success.main"
+                                : daysRemaining < 0
+                                ? "error.main"
+                                : "text.secondary"
+                            }
+                          >
+                            {status.label === "COMPLETED"
+                              ? "Goal completed"
+                              : daysRemaining < 0
+                              ? `${Math.abs(daysRemaining)} day(s) overdue`
+                              : `${daysRemaining} day(s) remaining`}
+                          </Typography>
+                        )}
+
+                        <Stack direction="row" spacing={1} mt={3}>
+                          <Tooltip title="Edit goal">
+                            <IconButton onClick={() => handleOpenEdit(goal)}>
+                              <EditIcon />
+                            </IconButton>
+                          </Tooltip>
+
+                          <Tooltip title="Delete goal">
+                            <IconButton
+                              color="error"
+                              onClick={() => setDeleteTarget(goal)}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                );
+              })}
+            </Grid>
+          )}
+        </CardContent>
+      </Card>
 
       <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
         <DialogTitle fontWeight={900}>
-          {editingBudget ? "Edit Budget" : "Add Budget"}
+          {editingGoal ? "Edit Savings Goal" : "Add Savings Goal"}
         </DialogTitle>
 
         <Box component="form" onSubmit={handleSubmit}>
@@ -874,61 +803,22 @@ const BudgetPage = () => {
               </Alert>
             )}
 
-            <FormControl fullWidth margin="normal">
-              <InputLabel>Expense Category</InputLabel>
-              <Select
-                label="Expense Category"
-                name="category_id"
-                value={formData.category_id}
-                onChange={handleChange}
-              >
-                {expenseCategories.map((category) => (
-                  <MenuItem key={category.category_id} value={category.category_id}>
-                    {category.category_name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth margin="normal">
-                  <InputLabel>Month</InputLabel>
-                  <Select
-                    label="Month"
-                    name="month"
-                    value={formData.month}
-                    onChange={handleChange}
-                  >
-                    {monthNames.map((month, index) => (
-                      <MenuItem key={month} value={index + 1}>
-                        {month}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Year"
-                  name="year"
-                  type="number"
-                  value={formData.year}
-                  onChange={handleChange}
-                  fullWidth
-                  required
-                  margin="normal"
-                  inputProps={{ min: 2024 }}
-                />
-              </Grid>
-            </Grid>
+            <TextField
+              label="Goal Name"
+              name="goal_name"
+              value={formData.goal_name}
+              onChange={handleChange}
+              fullWidth
+              required
+              margin="normal"
+              placeholder="Example: Emergency Fund, Laptop, Vacation"
+            />
 
             <TextField
-              label="Budget Amount"
-              name="budget_amount"
+              label="Target Amount"
+              name="target_amount"
               type="number"
-              value={formData.budget_amount}
+              value={formData.target_amount}
               onChange={handleChange}
               fullWidth
               required
@@ -937,6 +827,33 @@ const BudgetPage = () => {
               InputProps={{
                 startAdornment: <InputAdornment position="start">₹</InputAdornment>,
               }}
+            />
+
+            <TextField
+              label="Current Saved Amount"
+              name="current_amount"
+              type="number"
+              value={formData.current_amount}
+              onChange={handleChange}
+              fullWidth
+              required
+              margin="normal"
+              inputProps={{ min: 0, step: "0.01" }}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+              }}
+            />
+
+            <TextField
+              label="Target Date"
+              name="target_date"
+              type="date"
+              value={formData.target_date}
+              onChange={handleChange}
+              fullWidth
+              required
+              margin="normal"
+              InputLabelProps={{ shrink: true }}
             />
           </DialogContent>
 
@@ -948,9 +865,9 @@ const BudgetPage = () => {
             <Button type="submit" variant="contained" disabled={saving}>
               {saving
                 ? "Saving..."
-                : editingBudget
-                ? "Update Budget"
-                : "Create Budget"}
+                : editingGoal
+                ? "Update Goal"
+                : "Create Goal"}
             </Button>
           </DialogActions>
         </Box>
@@ -962,11 +879,11 @@ const BudgetPage = () => {
         fullWidth
         maxWidth="xs"
       >
-        <DialogTitle fontWeight={900}>Delete Budget</DialogTitle>
+        <DialogTitle fontWeight={900}>Delete Savings Goal</DialogTitle>
 
         <DialogContent>
           <Typography>
-            Are you sure you want to delete this budget?
+            Are you sure you want to delete this savings goal?
           </Typography>
 
           {deleteTarget && (
@@ -978,11 +895,13 @@ const BudgetPage = () => {
                 backgroundColor: "action.hover",
               }}
             >
-              <Typography fontWeight={800}>
-                {getCategoryName(deleteTarget.category_id)}
+              <Typography fontWeight={900}>
+                {deleteTarget.goal_name}
               </Typography>
-              <Typography color="primary.main" fontWeight={900}>
-                {formatCurrency(deleteTarget.budget_amount)}
+
+              <Typography color="success.main" fontWeight={900}>
+                {formatCurrency(deleteTarget.current_amount)} saved of{" "}
+                {formatCurrency(deleteTarget.target_amount)}
               </Typography>
             </Box>
           )}
@@ -1007,6 +926,5 @@ const BudgetPage = () => {
   );
 };
 
-export default BudgetPage;
----------------------------------------
-
+export default SavingsPage;
+------------------------------------
