@@ -1,79 +1,195 @@
-sonu
+export const decodeJwtPayload = (token) => {
+  try {
+    if (!token) return null;
+
+    const base64Url = token.split(".")[1];
+    if (!base64Url) return null;
+
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((char) => {
+          return `%${`00${char.charCodeAt(0).toString(16)}`.slice(-2)}`;
+        })
+        .join("")
+    );
+
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+};
+
+export const getUserIdFromToken = () => {
+  const token = localStorage.getItem("accessToken");
+  const payload = decodeJwtPayload(token);
+
+  return payload?.user_id || null;
+};
+--------------------------------------
 import api from "./axios";
 
-export const getCategories = async () => {
-  const response = await api.get("/categories/");
+export const getIncome = async () => {
+  const response = await api.get("/income/");
   return response.data;
 };
 
-export const createCategory = async (data) => {
-  const response = await api.post("/categories/", data);
+export const createIncome = async (data) => {
+  const response = await api.post("/income/", data);
   return response.data;
 };
-----------------------------
-import { useCallback, useEffect, useState } from "react";
-import { createCategory, getCategories } from "../api/categoryApi";
 
-const useCategories = () => {
-  const [categories, setCategories] = useState([]);
+export const updateIncome = async (incomeId, data) => {
+  const response = await api.put(`/income/${incomeId}`, data);
+  return response.data;
+};
+
+export const deleteIncome = async (incomeId) => {
+  const response = await api.delete(`/income/${incomeId}`);
+  return response.data;
+};
+---------------------------------
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createIncome,
+  deleteIncome,
+  getIncome,
+  updateIncome,
+} from "../api/incomeApi";
+import { getUserIdFromToken } from "../utils/jwt";
+
+const useIncome = () => {
+  const [incomeList, setIncomeList] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
-  const fetchCategories = useCallback(async () => {
+  const userId = useMemo(() => getUserIdFromToken(), []);
+
+  const fetchIncome = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const data = await getCategories();
-      setCategories(Array.isArray(data) ? data : []);
+      const data = await getIncome();
+      const list = Array.isArray(data) ? data : [];
+
+      const userSpecificIncome = userId
+        ? list.filter((item) => Number(item.user_id) === Number(userId))
+        : list;
+
+      setIncomeList(userSpecificIncome);
     } catch (err) {
       setError(
         err.response?.data?.detail ||
           err.response?.data?.message ||
-          "Failed to load categories"
+          "Failed to load income records"
       );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userId]);
 
-  const addCategory = async (payload) => {
-    setCreating(true);
+  const addIncome = async (payload) => {
+    setSaving(true);
     setError("");
 
     try {
-      await createCategory(payload);
-      await fetchCategories();
+      if (!userId) {
+        throw new Error("User ID not found in token. Please login again.");
+      }
+
+      await createIncome({
+        user_id: Number(userId),
+        category_id: Number(payload.category_id),
+        amount: Number(payload.amount),
+        description: payload.description,
+        income_date: payload.income_date,
+      });
+
+      await fetchIncome();
     } catch (err) {
       const message =
         err.response?.data?.detail ||
         err.response?.data?.message ||
-        "Failed to create category";
+        err.message ||
+        "Failed to create income";
 
       setError(message);
       throw new Error(message);
     } finally {
-      setCreating(false);
+      setSaving(false);
+    }
+  };
+
+  const editIncome = async (incomeId, payload) => {
+    setSaving(true);
+    setError("");
+
+    try {
+      await updateIncome(incomeId, {
+        category_id: Number(payload.category_id),
+        amount: Number(payload.amount),
+        description: payload.description,
+        income_date: payload.income_date,
+      });
+
+      await fetchIncome();
+    } catch (err) {
+      const message =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "Failed to update income";
+
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeIncome = async (incomeId) => {
+    setDeleting(true);
+    setError("");
+
+    try {
+      await deleteIncome(incomeId);
+      await fetchIncome();
+    } catch (err) {
+      const message =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "Failed to delete income";
+
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setDeleting(false);
     }
   };
 
   useEffect(() => {
-    fetchCategories();
-  }, [fetchCategories]);
+    fetchIncome();
+  }, [fetchIncome]);
 
   return {
-    categories,
+    incomeList,
     loading,
-    creating,
+    saving,
+    deleting,
     error,
-    fetchCategories,
-    addCategory,
+    userId,
+    fetchIncome,
+    addIncome,
+    editIncome,
+    removeIncome,
   };
 };
 
-export default useCategories;
------------------
+export default useIncome;
+--------------------------------
 import { useMemo, useState } from "react";
 import {
   Alert,
@@ -89,73 +205,161 @@ import {
   DialogTitle,
   FormControl,
   Grid,
+  IconButton,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Select,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
-import CategoryIcon from "@mui/icons-material/Category";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import AddIcon from "@mui/icons-material/Add";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import CurrencyRupeeIcon from "@mui/icons-material/CurrencyRupee";
 import PageHeader from "../../components/common/PageHeader";
+import useIncome from "../../hooks/useIncome";
 import useCategories from "../../hooks/useCategories";
 
-const CategoryPage = () => {
+const getToday = () => {
+  return new Date().toISOString().slice(0, 10);
+};
+
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+};
+
+const formatDate = (value) => {
+  if (!value) return "-";
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+};
+
+const IncomePage = () => {
   const {
-    categories,
+    incomeList,
     loading,
-    creating,
+    saving,
+    deleting,
     error,
-    fetchCategories,
-    addCategory,
-  } = useCategories();
+    fetchIncome,
+    addIncome,
+    editIncome,
+    removeIncome,
+  } = useIncome();
+
+  const { categories, loading: categoryLoading } = useCategories();
+
+  const incomeCategories = useMemo(() => {
+    return categories.filter((category) => category.category_type === "INCOME");
+  }, [categories]);
 
   const [open, setOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    category_name: "",
-    category_type: "EXPENSE",
-  });
+  const [editingIncome, setEditingIncome] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [formError, setFormError] = useState("");
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("ALL");
 
-  const incomeCount = useMemo(
-    () => categories.filter((item) => item.category_type === "INCOME").length,
-    [categories]
-  );
+  const [formData, setFormData] = useState({
+    category_id: "",
+    amount: "",
+    description: "",
+    income_date: getToday(),
+  });
 
-  const expenseCount = useMemo(
-    () => categories.filter((item) => item.category_type === "EXPENSE").length,
-    [categories]
-  );
+  const totalIncome = useMemo(() => {
+    return incomeList.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  }, [incomeList]);
 
-  const filteredCategories = useMemo(() => {
-    return categories.filter((category) => {
-      const matchesSearch = category.category_name
-        ?.toLowerCase()
-        .includes(search.toLowerCase());
+  const currentMonthIncome = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
 
-      const matchesType =
-        typeFilter === "ALL" || category.category_type === typeFilter;
+    return incomeList.reduce((sum, item) => {
+      const date = new Date(item.income_date);
 
-      return matchesSearch && matchesType;
+      if (
+        date.getMonth() === currentMonth &&
+        date.getFullYear() === currentYear
+      ) {
+        return sum + Number(item.amount || 0);
+      }
+
+      return sum;
+    }, 0);
+  }, [incomeList]);
+
+  const highestIncome = useMemo(() => {
+    if (incomeList.length === 0) return 0;
+
+    return Math.max(...incomeList.map((item) => Number(item.amount || 0)));
+  }, [incomeList]);
+
+  const filteredIncome = useMemo(() => {
+    return incomeList.filter((income) => {
+      const category = incomeCategories.find(
+        (item) => Number(item.category_id) === Number(income.category_id)
+      );
+
+      const searchValue = `${income.description || ""} ${
+        category?.category_name || ""
+      }`
+        .toLowerCase()
+        .trim();
+
+      return searchValue.includes(search.toLowerCase());
     });
-  }, [categories, search, typeFilter]);
+  }, [incomeList, incomeCategories, search]);
 
-  const handleOpen = () => {
-    setFormData({
-      category_name: "",
-      category_type: "EXPENSE",
-    });
+  const getCategoryName = (categoryId) => {
+    const category = incomeCategories.find(
+      (item) => Number(item.category_id) === Number(categoryId)
+    );
+
+    return category?.category_name || "Unknown Category";
+  };
+
+  const handleOpenAdd = () => {
+    setEditingIncome(null);
     setFormError("");
+    setFormData({
+      category_id: "",
+      amount: "",
+      description: "",
+      income_date: getToday(),
+    });
+    setOpen(true);
+  };
+
+  const handleOpenEdit = (income) => {
+    setEditingIncome(income);
+    setFormError("");
+    setFormData({
+      category_id: income.category_id || "",
+      amount: income.amount || "",
+      description: income.description || "",
+      income_date: income.income_date || getToday(),
+    });
     setOpen(true);
   };
 
   const handleClose = () => {
-    if (!creating) {
+    if (!saving) {
       setOpen(false);
+      setEditingIncome(null);
     }
   };
 
@@ -166,43 +370,76 @@ const CategoryPage = () => {
     });
   };
 
+  const validateForm = () => {
+    if (!formData.category_id) {
+      return "Please select an income category";
+    }
+
+    if (!formData.amount || Number(formData.amount) <= 0) {
+      return "Amount must be greater than zero";
+    }
+
+    if (!formData.description.trim()) {
+      return "Description is required";
+    }
+
+    if (!formData.income_date) {
+      return "Income date is required";
+    }
+
+    return "";
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setFormError("");
 
-    if (!formData.category_name.trim()) {
-      setFormError("Category name is required");
+    const validationError = validateForm();
+
+    if (validationError) {
+      setFormError(validationError);
       return;
     }
 
     try {
-      await addCategory({
-        category_name: formData.category_name.trim(),
-        category_type: formData.category_type,
-      });
+      const payload = {
+        category_id: formData.category_id,
+        amount: formData.amount,
+        description: formData.description.trim(),
+        income_date: formData.income_date,
+      };
 
-      setOpen(false);
+      if (editingIncome) {
+        await editIncome(editingIncome.income_id, payload);
+      } else {
+        await addIncome(payload);
+      }
+
+      handleClose();
     } catch (err) {
-      setFormError(err.message || "Failed to create category");
+      setFormError(err.message || "Something went wrong");
     }
   };
 
-  const getTypeChip = (type) => {
-    if (type === "INCOME") {
-      return <Chip label="INCOME" color="success" size="small" />;
-    }
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
 
-    return <Chip label="EXPENSE" color="error" size="small" />;
+    try {
+      await removeIncome(deleteTarget.income_id);
+      setDeleteTarget(null);
+    } catch {
+      // error is already handled in hook
+    }
   };
 
   return (
     <Box>
       <PageHeader
-        title="Category Management"
-        subtitle="Create and manage income and expense categories used across finance modules."
-        breadcrumbs={["Finance", "Categories"]}
-        actionText="Add Category"
-        onAction={handleOpen}
+        title="Income Tracking"
+        subtitle="Track salary, business income, freelance income, investment returns and other income sources."
+        breadcrumbs={["Finance", "Income"]}
+        actionText="Add Income"
+        onAction={handleOpenAdd}
       />
 
       {error && (
@@ -225,24 +462,26 @@ const CategoryPage = () => {
               <Stack direction="row" alignItems="center" spacing={2}>
                 <Box
                   sx={{
-                    width: 48,
-                    height: 48,
+                    width: 50,
+                    height: 50,
                     borderRadius: 3,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    background: "linear-gradient(135deg, #2563eb, #7c3aed)",
                     color: "white",
+                    background: "linear-gradient(135deg, #16a34a, #22c55e)",
                   }}
                 >
-                  <CategoryIcon />
+                  <TrendingUpIcon />
                 </Box>
 
                 <Box>
                   <Typography color="text.secondary" fontWeight={700}>
-                    Total Categories
+                    Total Income
                   </Typography>
-                  <Typography variant="h5">{categories.length}</Typography>
+                  <Typography variant="h5" fontWeight={900}>
+                    {formatCurrency(totalIncome)}
+                  </Typography>
                 </Box>
               </Stack>
             </CardContent>
@@ -260,13 +499,13 @@ const CategoryPage = () => {
           >
             <CardContent>
               <Typography color="text.secondary" fontWeight={700}>
-                Income Categories
+                Current Month Income
               </Typography>
-              <Typography variant="h5" color="success.main">
-                {incomeCount}
+              <Typography variant="h5" fontWeight={900} color="success.main">
+                {formatCurrency(currentMonthIncome)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Used for salary, business income, investments and more.
+                Income recorded for this month.
               </Typography>
             </CardContent>
           </Card>
@@ -283,13 +522,13 @@ const CategoryPage = () => {
           >
             <CardContent>
               <Typography color="text.secondary" fontWeight={700}>
-                Expense Categories
+                Highest Income Entry
               </Typography>
-              <Typography variant="h5" color="error.main">
-                {expenseCount}
+              <Typography variant="h5" fontWeight={900}>
+                {formatCurrency(highestIncome)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Used for food, travel, rent, shopping and other expenses.
+                Highest single income transaction.
               </Typography>
             </CardContent>
           </Card>
@@ -306,36 +545,23 @@ const CategoryPage = () => {
         <CardContent>
           <Stack
             direction={{ xs: "column", md: "row" }}
-            spacing={2}
             justifyContent="space-between"
+            spacing={2}
             mb={3}
           >
             <TextField
-              label="Search categories"
+              label="Search income"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               size="small"
-              sx={{ minWidth: { xs: "100%", md: 320 } }}
+              sx={{ minWidth: { xs: "100%", md: 340 } }}
             />
 
             <Stack direction="row" spacing={2}>
-              <FormControl size="small" sx={{ minWidth: 160 }}>
-                <InputLabel>Type</InputLabel>
-                <Select
-                  label="Type"
-                  value={typeFilter}
-                  onChange={(event) => setTypeFilter(event.target.value)}
-                >
-                  <MenuItem value="ALL">All</MenuItem>
-                  <MenuItem value="INCOME">Income</MenuItem>
-                  <MenuItem value="EXPENSE">Expense</MenuItem>
-                </Select>
-              </FormControl>
-
               <Button
                 variant="outlined"
                 startIcon={<RefreshIcon />}
-                onClick={fetchCategories}
+                onClick={fetchIncome}
               >
                 Refresh
               </Button>
@@ -343,18 +569,18 @@ const CategoryPage = () => {
               <Button
                 variant="contained"
                 startIcon={<AddIcon />}
-                onClick={handleOpen}
+                onClick={handleOpenAdd}
               >
-                Add
+                Add Income
               </Button>
             </Stack>
           </Stack>
 
-          {loading ? (
+          {loading || categoryLoading ? (
             <Box display="flex" justifyContent="center" py={6}>
               <CircularProgress />
             </Box>
-          ) : filteredCategories.length === 0 ? (
+          ) : incomeCategories.length === 0 ? (
             <Box
               sx={{
                 py: 8,
@@ -364,86 +590,150 @@ const CategoryPage = () => {
                 borderRadius: 3,
               }}
             >
-              <Typography variant="h6" fontWeight={800}>
-                No categories found
+              <Typography variant="h6" fontWeight={900}>
+                No income category found
               </Typography>
               <Typography color="text.secondary" mt={1}>
-                Create your first income or expense category.
+                Please create at least one category with type INCOME before
+                adding income.
               </Typography>
+            </Box>
+          ) : filteredIncome.length === 0 ? (
+            <Box
+              sx={{
+                py: 8,
+                textAlign: "center",
+                border: "1px dashed",
+                borderColor: "divider",
+                borderRadius: 3,
+              }}
+            >
+              <Typography variant="h6" fontWeight={900}>
+                No income records found
+              </Typography>
+              <Typography color="text.secondary" mt={1}>
+                Add your first income record to start tracking your earnings.
+              </Typography>
+
               <Button
                 variant="contained"
                 startIcon={<AddIcon />}
                 sx={{ mt: 3 }}
-                onClick={handleOpen}
+                onClick={handleOpenAdd}
               >
-                Add Category
+                Add Income
               </Button>
             </Box>
           ) : (
-            <Grid container spacing={2}>
-              {filteredCategories.map((category) => (
-                <Grid
-                  item
-                  xs={12}
-                  sm={6}
-                  md={4}
-                  lg={3}
-                  key={category.category_id}
+            <Stack spacing={2}>
+              {filteredIncome.map((income) => (
+                <Card
+                  key={income.income_id}
+                  elevation={0}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    transition: "0.2s ease",
+                    "&:hover": {
+                      boxShadow: "0 14px 36px rgba(15, 23, 42, 0.12)",
+                      transform: "translateY(-2px)",
+                    },
+                  }}
                 >
-                  <Card
-                    elevation={0}
-                    sx={{
-                      border: "1px solid",
-                      borderColor: "divider",
-                      height: "100%",
-                      transition: "0.2s ease",
-                      "&:hover": {
-                        transform: "translateY(-3px)",
-                        boxShadow: "0 12px 30px rgba(15, 23, 42, 0.12)",
-                      },
-                    }}
-                  >
-                    <CardContent>
-                      <Stack
-                        direction="row"
-                        justifyContent="space-between"
-                        alignItems="flex-start"
-                      >
+                  <CardContent>
+                    <Stack
+                      direction={{ xs: "column", md: "row" }}
+                      justifyContent="space-between"
+                      alignItems={{ xs: "flex-start", md: "center" }}
+                      spacing={2}
+                    >
+                      <Stack direction="row" spacing={2} alignItems="center">
                         <Box
                           sx={{
-                            width: 42,
-                            height: 42,
+                            width: 46,
+                            height: 46,
                             borderRadius: 3,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            backgroundColor: "action.hover",
+                            backgroundColor: "success.light",
+                            color: "success.contrastText",
                           }}
                         >
-                          <CategoryIcon color="primary" />
+                          <CurrencyRupeeIcon />
                         </Box>
 
-                        {getTypeChip(category.category_type)}
+                        <Box>
+                          <Typography variant="h6" fontWeight={900}>
+                            {income.description}
+                          </Typography>
+
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                            flexWrap="wrap"
+                            mt={0.5}
+                          >
+                            <Chip
+                              label={getCategoryName(income.category_id)}
+                              color="success"
+                              size="small"
+                            />
+
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                            >
+                              {formatDate(income.income_date)}
+                            </Typography>
+                          </Stack>
+                        </Box>
                       </Stack>
 
-                      <Typography variant="h6" mt={2} fontWeight={900}>
-                        {category.category_name}
-                      </Typography>
+                      <Stack
+                        direction="row"
+                        spacing={2}
+                        alignItems="center"
+                        sx={{ width: { xs: "100%", md: "auto" } }}
+                      >
+                        <Typography
+                          variant="h6"
+                          fontWeight={900}
+                          color="success.main"
+                          sx={{ minWidth: 130 }}
+                        >
+                          {formatCurrency(income.amount)}
+                        </Typography>
 
-                      <Typography variant="body2" color="text.secondary">
-                        Category ID: {category.category_id}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
+                        <Tooltip title="Edit income">
+                          <IconButton onClick={() => handleOpenEdit(income)}>
+                            <EditIcon />
+                          </IconButton>
+                        </Tooltip>
+
+                        <Tooltip title="Delete income">
+                          <IconButton
+                            color="error"
+                            onClick={() => setDeleteTarget(income)}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+                </Card>
               ))}
-            </Grid>
+            </Stack>
           )}
         </CardContent>
       </Card>
 
       <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-        <DialogTitle fontWeight={900}>Add New Category</DialogTitle>
+        <DialogTitle fontWeight={900}>
+          {editingIncome ? "Edit Income" : "Add Income"}
+        </DialogTitle>
 
         <Box component="form" onSubmit={handleSubmit}>
           <DialogContent>
@@ -453,45 +743,134 @@ const CategoryPage = () => {
               </Alert>
             )}
 
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Income Category</InputLabel>
+              <Select
+                label="Income Category"
+                name="category_id"
+                value={formData.category_id}
+                onChange={handleChange}
+              >
+                {incomeCategories.map((category) => (
+                  <MenuItem
+                    key={category.category_id}
+                    value={category.category_id}
+                  >
+                    {category.category_name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
             <TextField
-              label="Category Name"
-              name="category_name"
-              value={formData.category_name}
+              label="Amount"
+              name="amount"
+              type="number"
+              value={formData.amount}
               onChange={handleChange}
               fullWidth
               required
               margin="normal"
-              placeholder="Example: Salary, Food, Rent, Travel"
+              inputProps={{ min: 1, step: "0.01" }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">₹</InputAdornment>
+                ),
+              }}
             />
 
-            <FormControl fullWidth margin="normal">
-              <InputLabel>Category Type</InputLabel>
-              <Select
-                label="Category Type"
-                name="category_type"
-                value={formData.category_type}
-                onChange={handleChange}
-              >
-                <MenuItem value="INCOME">Income</MenuItem>
-                <MenuItem value="EXPENSE">Expense</MenuItem>
-              </Select>
-            </FormControl>
+            <TextField
+              label="Description"
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              fullWidth
+              required
+              margin="normal"
+              placeholder="Example: June salary, Freelance project, Bonus"
+            />
+
+            <TextField
+              label="Income Date"
+              name="income_date"
+              type="date"
+              value={formData.income_date}
+              onChange={handleChange}
+              fullWidth
+              required
+              margin="normal"
+              InputLabelProps={{
+                shrink: true,
+              }}
+            />
           </DialogContent>
 
           <DialogActions sx={{ px: 3, pb: 3 }}>
-            <Button onClick={handleClose} disabled={creating}>
+            <Button onClick={handleClose} disabled={saving}>
               Cancel
             </Button>
 
-            <Button type="submit" variant="contained" disabled={creating}>
-              {creating ? "Creating..." : "Create Category"}
+            <Button type="submit" variant="contained" disabled={saving}>
+              {saving
+                ? "Saving..."
+                : editingIncome
+                ? "Update Income"
+                : "Create Income"}
             </Button>
           </DialogActions>
         </Box>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle fontWeight={900}>Delete Income</DialogTitle>
+
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete this income record?
+          </Typography>
+
+          {deleteTarget && (
+            <Box
+              sx={{
+                mt: 2,
+                p: 2,
+                borderRadius: 3,
+                backgroundColor: "action.hover",
+              }}
+            >
+              <Typography fontWeight={800}>
+                {deleteTarget.description}
+              </Typography>
+              <Typography color="success.main" fontWeight={900}>
+                {formatCurrency(deleteTarget.amount)}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button disabled={deleting} onClick={() => setDeleteTarget(null)}>
+            Cancel
+          </Button>
+
+          <Button
+            color="error"
+            variant="contained"
+            disabled={deleting}
+            onClick={handleConfirmDelete}
+          >
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );
 };
 
-export default CategoryPage;
-----------------------------------
+export default IncomePage;
+-----------------------------------
