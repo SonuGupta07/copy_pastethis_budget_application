@@ -1,33 +1,63 @@
+import api from "./axios";
+
+export const getNotificationsByUser = async (userId) => {
+  const response = await api.get(`/notifications/${userId}`);
+  return response.data;
+};
+
+export const createNotification = async (data) => {
+  const response = await api.post("/notifications/", data);
+  return response.data;
+};
+
+export const markNotificationAsRead = async (notificationId) => {
+  const response = await api.put(`/notifications/read/${notificationId}`);
+  return response.data;
+};
+
+export const deleteNotification = async (notificationId) => {
+  const response = await api.delete(`/notifications/${notificationId}`);
+  return response.data;
+};
+
+export const getAllBudgets = async () => {
+  const response = await api.get("/budget/");
+  return response.data;
+};
+
+export const getAllExpenses = async () => {
+  const response = await api.get("/expense/");
+  return response.data;
+};
+
+export const getAllSavingsGoals = async () => {
+  const response = await api.get("/savings/");
+  return response.data;
+};
+
+export const getAllRecurringTransactions = async () => {
+  const response = await api.get("/recurring/");
+  return response.data;
+};
+
+export const getAllCategories = async () => {
+  const response = await api.get("/categories/");
+  return response.data;
+};
+---------------------------------
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  createNotification,
+  deleteNotification,
   getAllBudgets,
   getAllCategories,
   getAllExpenses,
-  getAllIncome,
   getAllRecurringTransactions,
   getAllSavingsGoals,
-  getAnalyticsDateRange,
-  getAnalyticsExpensePie,
-  getAnalyticsMonthlyBar,
-  getAnalyticsTrend,
-  getAnalyticsYearlyBar,
-} from "../api/analyticsPageApi";
+  getNotificationsByUser,
+  markNotificationAsRead,
+} from "../api/notificationApi";
 import { getUserIdFromToken } from "../utils/jwt";
-
-const monthLabels = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
 
 const normalizeArray = (data) => {
   if (Array.isArray(data)) return data;
@@ -35,37 +65,16 @@ const normalizeArray = (data) => {
   return [data];
 };
 
-const getYear = (dateValue) => {
+const getDaysRemaining = (dateValue) => {
   if (!dateValue) return null;
-  return new Date(dateValue).getFullYear();
-};
 
-const getMonth = (dateValue) => {
-  if (!dateValue) return null;
-  return new Date(dateValue).getMonth() + 1;
-};
+  const today = new Date();
+  const target = new Date(dateValue);
 
-const isWithinDateRange = (dateValue, startDate, endDate) => {
-  if (!dateValue) return false;
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
 
-  const recordDate = new Date(dateValue);
-  recordDate.setHours(0, 0, 0, 0);
-
-  if (startDate) {
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
-
-    if (recordDate < start) return false;
-  }
-
-  if (endDate) {
-    const end = new Date(endDate);
-    end.setHours(0, 0, 0, 0);
-
-    if (recordDate > end) return false;
-  }
-
-  return true;
+  return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 };
 
 const buildCategoryMap = (categories) => {
@@ -78,58 +87,168 @@ const buildCategoryMap = (categories) => {
   return map;
 };
 
-const groupByCategory = (records, categoryMap) => {
-  const grouped = {};
+const buildSmartAlerts = ({
+  budgets,
+  expenses,
+  savingsGoals,
+  recurringTransactions,
+  categories,
+  userId,
+}) => {
+  const alerts = [];
+  const categoryMap = buildCategoryMap(categories);
 
-  records.forEach((record) => {
-    const categoryName =
-      categoryMap[Number(record.category_id)] || "Unknown Category";
+  const userBudgets = budgets.filter(
+    (item) => Number(item.user_id) === Number(userId)
+  );
 
-    grouped[categoryName] =
-      (grouped[categoryName] || 0) + Number(record.amount || 0);
+  const userExpenses = expenses.filter(
+    (item) => Number(item.user_id) === Number(userId)
+  );
+
+  const userSavingsGoals = savingsGoals.filter(
+    (item) => Number(item.user_id) === Number(userId)
+  );
+
+  const userRecurring = recurringTransactions.filter(
+    (item) => Number(item.user_id) === Number(userId)
+  );
+
+  userBudgets.forEach((budget) => {
+    const expenseForBudget = userExpenses
+      .filter((expense) => {
+        const expenseDate = new Date(expense.expense_date);
+
+        return (
+          Number(expense.category_id) === Number(budget.category_id) &&
+          expenseDate.getMonth() + 1 === Number(budget.month) &&
+          expenseDate.getFullYear() === Number(budget.year)
+        );
+      })
+      .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+
+    const budgetAmount = Number(budget.budget_amount || 0);
+    const usage = budgetAmount > 0 ? (expenseForBudget / budgetAmount) * 100 : 0;
+    const categoryName = categoryMap[Number(budget.category_id)] || "Budget";
+
+    if (usage >= 100) {
+      alerts.push({
+        type: "BUDGET_EXCEEDED",
+        severity: "error",
+        title: "Budget Exceeded",
+        message: `${categoryName} budget exceeded. Usage is ${usage.toFixed(
+          1
+        )}% for ${budget.month}/${budget.year}.`,
+      });
+    } else if (usage >= 80) {
+      alerts.push({
+        type: "BUDGET_WARNING",
+        severity: "warning",
+        title: "Budget Warning",
+        message: `${categoryName} budget reached ${usage.toFixed(
+          1
+        )}%. Monitor spending carefully.`,
+      });
+    }
   });
 
-  return Object.entries(grouped)
-    .map(([category, amount]) => ({
-      category,
-      amount,
-    }))
-    .sort((a, b) => b.amount - a.amount);
+  userSavingsGoals.forEach((goal) => {
+    const target = Number(goal.target_amount || 0);
+    const current = Number(goal.current_amount || 0);
+    const progress = target > 0 ? (current / target) * 100 : 0;
+    const daysRemaining = getDaysRemaining(goal.target_date);
+
+    if (progress >= 100) {
+      alerts.push({
+        type: "SAVINGS_COMPLETED",
+        severity: "success",
+        title: "Savings Goal Completed",
+        message: `${goal.goal_name} has reached the target amount.`,
+      });
+    } else if (daysRemaining !== null && daysRemaining < 0) {
+      alerts.push({
+        type: "SAVINGS_OVERDUE",
+        severity: "error",
+        title: "Savings Goal Overdue",
+        message: `${goal.goal_name} target date is overdue by ${Math.abs(
+          daysRemaining
+        )} day(s).`,
+      });
+    } else if (daysRemaining !== null && daysRemaining <= 7) {
+      alerts.push({
+        type: "SAVINGS_DUE_SOON",
+        severity: "warning",
+        title: "Savings Goal Due Soon",
+        message: `${goal.goal_name} target date is due in ${daysRemaining} day(s).`,
+      });
+    }
+  });
+
+  userRecurring.forEach((item) => {
+    const daysRemaining = getDaysRemaining(item.next_run_date);
+    const categoryName = categoryMap[Number(item.category_id)] || "Recurring";
+
+    if (daysRemaining !== null && daysRemaining < 0) {
+      alerts.push({
+        type: "RECURRING_OVERDUE",
+        severity: "error",
+        title: "Recurring Transaction Overdue",
+        message: `${categoryName} recurring transaction is overdue by ${Math.abs(
+          daysRemaining
+        )} day(s).`,
+      });
+    } else if (daysRemaining !== null && daysRemaining <= 7) {
+      alerts.push({
+        type: "RECURRING_DUE_SOON",
+        severity: "info",
+        title: "Recurring Transaction Due Soon",
+        message: `${categoryName} recurring transaction is due in ${daysRemaining} day(s).`,
+      });
+    }
+  });
+
+  const currentMonth = new Date().getMonth() + 1;
+  const currentYear = new Date().getFullYear();
+
+  const currentMonthExpenses = userExpenses.filter((expense) => {
+    const date = new Date(expense.expense_date);
+
+    return date.getMonth() + 1 === currentMonth && date.getFullYear() === currentYear;
+  });
+
+  const totalCurrentMonthExpense = currentMonthExpenses.reduce(
+    (sum, expense) => sum + Number(expense.amount || 0),
+    0
+  );
+
+  if (totalCurrentMonthExpense > 50000) {
+    alerts.push({
+      type: "HIGH_EXPENSE",
+      severity: "warning",
+      title: "High Monthly Expense",
+      message: `Current month expense is ₹${totalCurrentMonthExpense.toLocaleString(
+        "en-IN"
+      )}. Review spending patterns.`,
+    });
+  }
+
+  return alerts;
 };
 
-const formatAmountForInsight = (value) => {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0));
-};
-
-const useAnalyticsPage = () => {
+const useNotifications = () => {
   const userId = useMemo(() => getUserIdFromToken(), []);
 
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [month, setMonth] = useState("ALL");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-
-  const [categories, setCategories] = useState([]);
-  const [incomeList, setIncomeList] = useState([]);
-  const [expenseList, setExpenseList] = useState([]);
-  const [budgetList, setBudgetList] = useState([]);
-  const [savingsGoals, setSavingsGoals] = useState([]);
-  const [recurringList, setRecurringList] = useState([]);
-
-  const [backendExpensePie, setBackendExpensePie] = useState([]);
-  const [backendMonthlyBar, setBackendMonthlyBar] = useState(null);
-  const [backendYearlyBar, setBackendYearlyBar] = useState([]);
-  const [backendDateRangeSummary, setBackendDateRangeSummary] = useState(null);
-  const [backendTrend, setBackendTrend] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [smartAlerts, setSmartAlerts] = useState([]);
 
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const [error, setError] = useState("");
 
-  const fetchAnalytics = useCallback(async () => {
+  const fetchNotifications = useCallback(async () => {
     if (!userId) {
       setError("User ID not found in token. Please login again.");
       return;
@@ -139,513 +258,767 @@ const useAnalyticsPage = () => {
     setError("");
 
     try {
-      const selectedMonthForBackend =
-        month === "ALL" ? new Date().getMonth() + 1 : Number(month);
-
-      const safeStartDate = startDate || `${year}-01-01`;
-      const safeEndDate = endDate || `${year}-12-31`;
-
       const results = await Promise.allSettled([
-        getAllCategories(),
-        getAllIncome(),
-        getAllExpenses(),
+        getNotificationsByUser(userId),
         getAllBudgets(),
+        getAllExpenses(),
         getAllSavingsGoals(),
         getAllRecurringTransactions(),
-
-        getAnalyticsExpensePie(userId),
-        getAnalyticsMonthlyBar(userId, selectedMonthForBackend, year),
-        getAnalyticsYearlyBar(userId, year),
-        getAnalyticsDateRange(userId, safeStartDate, safeEndDate),
-        getAnalyticsTrend(userId),
+        getAllCategories(),
       ]);
 
-      const allCategories =
-        results[0].status === "fulfilled"
-          ? normalizeArray(results[0].value)
-          : [];
+      const userNotifications =
+        results[0].status === "fulfilled" ? normalizeArray(results[0].value) : [];
 
-      const allIncome =
-        results[1].status === "fulfilled"
-          ? normalizeArray(results[1].value)
-          : [];
+      const budgets =
+        results[1].status === "fulfilled" ? normalizeArray(results[1].value) : [];
 
-      const allExpenses =
-        results[2].status === "fulfilled"
-          ? normalizeArray(results[2].value)
-          : [];
+      const expenses =
+        results[2].status === "fulfilled" ? normalizeArray(results[2].value) : [];
 
-      const allBudgets =
-        results[3].status === "fulfilled"
-          ? normalizeArray(results[3].value)
-          : [];
+      const savingsGoals =
+        results[3].status === "fulfilled" ? normalizeArray(results[3].value) : [];
 
-      const allSavings =
-        results[4].status === "fulfilled"
-          ? normalizeArray(results[4].value)
-          : [];
+      const recurringTransactions =
+        results[4].status === "fulfilled" ? normalizeArray(results[4].value) : [];
 
-      const allRecurring =
-        results[5].status === "fulfilled"
-          ? normalizeArray(results[5].value)
-          : [];
+      const categories =
+        results[5].status === "fulfilled" ? normalizeArray(results[5].value) : [];
 
-      setCategories(allCategories);
-
-      setIncomeList(
-        allIncome.filter((item) => Number(item.user_id) === Number(userId))
+      setNotifications(
+        userNotifications.sort(
+          (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
+        )
       );
 
-      setExpenseList(
-        allExpenses.filter((item) => Number(item.user_id) === Number(userId))
-      );
-
-      setBudgetList(
-        allBudgets.filter((item) => Number(item.user_id) === Number(userId))
-      );
-
-      setSavingsGoals(
-        allSavings.filter((item) => Number(item.user_id) === Number(userId))
-      );
-
-      setRecurringList(
-        allRecurring.filter((item) => Number(item.user_id) === Number(userId))
-      );
-
-      setBackendExpensePie(
-        results[6].status === "fulfilled"
-          ? normalizeArray(results[6].value)
-          : []
-      );
-
-      setBackendMonthlyBar(
-        results[7].status === "fulfilled" ? results[7].value : null
-      );
-
-      setBackendYearlyBar(
-        results[8].status === "fulfilled"
-          ? normalizeArray(results[8].value)
-          : []
-      );
-
-      setBackendDateRangeSummary(
-        results[9].status === "fulfilled" ? results[9].value : null
-      );
-
-      setBackendTrend(
-        results[10].status === "fulfilled" ? results[10].value : null
+      setSmartAlerts(
+        buildSmartAlerts({
+          budgets,
+          expenses,
+          savingsGoals,
+          recurringTransactions,
+          categories,
+          userId,
+        })
       );
     } catch (err) {
       setError(
         err.response?.data?.detail ||
           err.response?.data?.message ||
-          "Failed to load analytics data"
+          "Failed to load notifications"
       );
     } finally {
       setLoading(false);
     }
-  }, [userId, year, month, startDate, endDate]);
+  }, [userId]);
 
   useEffect(() => {
-    fetchAnalytics();
-  }, [fetchAnalytics]);
+    fetchNotifications();
+  }, [fetchNotifications]);
 
-  const resetFilters = () => {
-    setYear(new Date().getFullYear());
-    setMonth("ALL");
-    setStartDate("");
-    setEndDate("");
+  const addNotification = async (payload) => {
+    if (!userId) {
+      throw new Error("User ID not found in token. Please login again.");
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      await createNotification({
+        user_id: Number(userId),
+        title: payload.title,
+        message: payload.message,
+      });
+
+      await fetchNotifications();
+    } catch (err) {
+      const message =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "Failed to create notification";
+
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const categoryMap = useMemo(() => {
-    return buildCategoryMap(categories);
-  }, [categories]);
-
-  const filterTransactionsByPeriod = useCallback(
-    (records, dateKey) => {
-      return records.filter((record) => {
-        const recordDate = record[dateKey];
-
-        if (!recordDate) return false;
-
-        const matchesYear = Number(getYear(recordDate)) === Number(year);
-
-        const matchesMonth =
-          month === "ALL" || Number(getMonth(recordDate)) === Number(month);
-
-        const matchesDateRange = isWithinDateRange(
-          recordDate,
-          startDate,
-          endDate
-        );
-
-        return matchesYear && matchesMonth && matchesDateRange;
-      });
-    },
-    [year, month, startDate, endDate]
-  );
-
-  const periodIncome = useMemo(() => {
-    return filterTransactionsByPeriod(incomeList, "income_date");
-  }, [incomeList, filterTransactionsByPeriod]);
-
-  const periodExpenses = useMemo(() => {
-    return filterTransactionsByPeriod(expenseList, "expense_date");
-  }, [expenseList, filterTransactionsByPeriod]);
-
-  const periodBudgets = useMemo(() => {
-    return budgetList.filter((budget) => {
-      const matchesYear = Number(budget.year) === Number(year);
-
-      const matchesMonth =
-        month === "ALL" || Number(budget.month) === Number(month);
-
-      if (!matchesYear || !matchesMonth) return false;
-
-      if (!startDate && !endDate) return true;
-
-      const budgetDate = `${budget.year}-${String(budget.month).padStart(
-        2,
-        "0"
-      )}-01`;
-
-      return isWithinDateRange(budgetDate, startDate, endDate);
+  const saveSmartAlertAsNotification = async (alert) => {
+    await addNotification({
+      title: alert.title,
+      message: alert.message,
     });
-  }, [budgetList, year, month, startDate, endDate]);
+  };
 
-  const periodSavingsGoals = useMemo(() => {
-    return savingsGoals.filter((goal) => {
-      if (!goal.target_date) return false;
+  const markAsRead = async (notificationId) => {
+    setUpdating(true);
+    setError("");
 
-      const matchesYear = Number(getYear(goal.target_date)) === Number(year);
+    try {
+      await markNotificationAsRead(notificationId);
+      await fetchNotifications();
+    } catch (err) {
+      const message =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "Failed to mark notification as read";
 
-      const matchesMonth =
-        month === "ALL" || Number(getMonth(goal.target_date)) === Number(month);
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setUpdating(false);
+    }
+  };
 
-      const matchesDateRange = isWithinDateRange(
-        goal.target_date,
-        startDate,
-        endDate
+  const markAllAsRead = async () => {
+    const unread = notifications.filter((item) => item.is_read !== "Y");
+
+    setUpdating(true);
+    setError("");
+
+    try {
+      await Promise.all(
+        unread.map((item) => markNotificationAsRead(item.notification_id))
       );
 
-      return matchesYear && matchesMonth && matchesDateRange;
-    });
-  }, [savingsGoals, year, month, startDate, endDate]);
+      await fetchNotifications();
+    } catch (err) {
+      const message =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "Failed to mark all notifications as read";
 
-  const periodRecurring = useMemo(() => {
-    return recurringList.filter((item) => {
-      if (!item.next_run_date) return false;
-
-      const matchesYear = Number(getYear(item.next_run_date)) === Number(year);
-
-      const matchesMonth =
-        month === "ALL" ||
-        Number(getMonth(item.next_run_date)) === Number(month);
-
-      const matchesDateRange = isWithinDateRange(
-        item.next_run_date,
-        startDate,
-        endDate
-      );
-
-      return matchesYear && matchesMonth && matchesDateRange;
-    });
-  }, [recurringList, year, month, startDate, endDate]);
-
-  const monthlyCashFlow = useMemo(() => {
-    return monthLabels.map((monthName, index) => {
-      const monthNumber = index + 1;
-
-      const income = incomeList
-        .filter(
-          (item) =>
-            Number(getYear(item.income_date)) === Number(year) &&
-            Number(getMonth(item.income_date)) === Number(monthNumber)
-        )
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-
-      const expense = expenseList
-        .filter(
-          (item) =>
-            Number(getYear(item.expense_date)) === Number(year) &&
-            Number(getMonth(item.expense_date)) === Number(monthNumber)
-        )
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-
-      return {
-        month: monthName,
-        income,
-        expense,
-        balance: income - expense,
-      };
-    });
-  }, [incomeList, expenseList, year]);
-
-  const incomeDistribution = useMemo(() => {
-    return groupByCategory(periodIncome, categoryMap);
-  }, [periodIncome, categoryMap]);
-
-  const expenseDistribution = useMemo(() => {
-    return groupByCategory(periodExpenses, categoryMap);
-  }, [periodExpenses, categoryMap]);
-
-  const incomeRanking = useMemo(() => {
-    return incomeDistribution.slice(0, 8);
-  }, [incomeDistribution]);
-
-  const expenseRanking = useMemo(() => {
-    return expenseDistribution.slice(0, 8);
-  }, [expenseDistribution]);
-
-  const budgetVsActual = useMemo(() => {
-    return periodBudgets.map((budget) => {
-      const expense = periodExpenses
-        .filter((item) => {
-          const sameCategory =
-            Number(item.category_id) === Number(budget.category_id);
-
-          const sameMonth =
-            Number(getMonth(item.expense_date)) === Number(budget.month);
-
-          const sameYear =
-            Number(getYear(item.expense_date)) === Number(budget.year);
-
-          return sameCategory && sameMonth && sameYear;
-        })
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-
-      const budgetAmount = Number(budget.budget_amount || 0);
-
-      return {
-        category: categoryMap[Number(budget.category_id)] || "Unknown",
-        month: budget.month,
-        year: budget.year,
-        budget: budgetAmount,
-        expense,
-        remaining: budgetAmount - expense,
-        utilization:
-          budgetAmount > 0
-            ? Number(((expense / budgetAmount) * 100).toFixed(2))
-            : 0,
-      };
-    });
-  }, [periodBudgets, periodExpenses, categoryMap]);
-
-  const savingsProgress = useMemo(() => {
-    return periodSavingsGoals.map((goal) => {
-      const target = Number(goal.target_amount || 0);
-      const current = Number(goal.current_amount || 0);
-
-      return {
-        goal: goal.goal_name,
-        target,
-        current,
-        remaining: Math.max(target - current, 0),
-        progress: target > 0 ? Number(((current / target) * 100).toFixed(2)) : 0,
-        status: goal.status,
-        target_date: goal.target_date,
-      };
-    });
-  }, [periodSavingsGoals]);
-
-  const recurringSummary = useMemo(() => {
-    return periodRecurring.map((item) => ({
-      ...item,
-      category: categoryMap[Number(item.category_id)] || "Unknown",
-    }));
-  }, [periodRecurring, categoryMap]);
-
-  const recentTransactions = useMemo(() => {
-    const incomeTransactions = periodIncome.map((item) => ({
-      id: `income-${item.income_id}`,
-      type: "INCOME",
-      category: categoryMap[Number(item.category_id)] || "Income",
-      description: item.description,
-      amount: Number(item.amount || 0),
-      date: item.income_date,
-    }));
-
-    const expenseTransactions = periodExpenses.map((item) => ({
-      id: `expense-${item.expense_id}`,
-      type: "EXPENSE",
-      category: categoryMap[Number(item.category_id)] || "Expense",
-      description: item.description,
-      amount: Number(item.amount || 0),
-      date: item.expense_date,
-    }));
-
-    return [...incomeTransactions, ...expenseTransactions]
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 10);
-  }, [periodIncome, periodExpenses, categoryMap]);
-
-  const totals = useMemo(() => {
-    const totalIncome = periodIncome.reduce(
-      (sum, item) => sum + Number(item.amount || 0),
-      0
-    );
-
-    const totalExpense = periodExpenses.reduce(
-      (sum, item) => sum + Number(item.amount || 0),
-      0
-    );
-
-    const totalBudget = periodBudgets.reduce(
-      (sum, item) => sum + Number(item.budget_amount || 0),
-      0
-    );
-
-    const savingsTarget = periodSavingsGoals.reduce(
-      (sum, item) => sum + Number(item.target_amount || 0),
-      0
-    );
-
-    const currentSavings = periodSavingsGoals.reduce(
-      (sum, item) => sum + Number(item.current_amount || 0),
-      0
-    );
-
-    return {
-      totalIncome,
-      totalExpense,
-      netBalance: totalIncome - totalExpense,
-      totalBudget,
-      remainingBudget: totalBudget - totalExpense,
-      budgetUtilization:
-        totalBudget > 0
-          ? Number(((totalExpense / totalBudget) * 100).toFixed(2))
-          : 0,
-      savingsTarget,
-      currentSavings,
-      savingsProgress:
-        savingsTarget > 0
-          ? Number(((currentSavings / savingsTarget) * 100).toFixed(2))
-          : 0,
-      expenseRatio:
-        totalIncome > 0
-          ? Number(((totalExpense / totalIncome) * 100).toFixed(2))
-          : 0,
-    };
-  }, [periodIncome, periodExpenses, periodBudgets, periodSavingsGoals]);
-
-  const bestWorstMonths = useMemo(() => {
-    const sorted = [...monthlyCashFlow].sort((a, b) => b.balance - a.balance);
-
-    return {
-      bestMonth: sorted[0] || null,
-      worstMonth: sorted[sorted.length - 1] || null,
-    };
-  }, [monthlyCashFlow]);
-
-  const smartInsights = useMemo(() => {
-    const insights = [];
-
-    if (totals.totalIncome === 0) {
-      insights.push("No income found for the selected filter.");
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setUpdating(false);
     }
+  };
 
-    if (totals.totalExpense === 0) {
-      insights.push("No expenses found for the selected filter.");
+  const removeNotification = async (notificationId) => {
+    setDeleting(true);
+    setError("");
+
+    try {
+      await deleteNotification(notificationId);
+      await fetchNotifications();
+    } catch (err) {
+      const message =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "Failed to delete notification";
+
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setDeleting(false);
     }
+  };
 
-    if (totals.totalIncome > 0) {
-      if (totals.expenseRatio > 80) {
-        insights.push(
-          "Expenses are above 80% of income. Spending control is strongly recommended."
-        );
-      } else if (totals.expenseRatio > 50) {
-        insights.push(
-          "Expenses are moderate. Monitor top spending categories carefully."
-        );
-      } else {
-        insights.push(
-          "Expense-to-income ratio looks healthy for the selected period."
-        );
-      }
-    }
+  const unreadCount = useMemo(() => {
+    return notifications.filter((item) => item.is_read !== "Y").length;
+  }, [notifications]);
 
-    if (expenseRanking.length > 0) {
-      insights.push(
-        `Highest spending category is ${
-          expenseRanking[0].category
-        } with ${formatAmountForInsight(expenseRanking[0].amount)}.`
-      );
-    }
-
-    if (incomeRanking.length > 0) {
-      insights.push(
-        `Top income source is ${
-          incomeRanking[0].category
-        } with ${formatAmountForInsight(incomeRanking[0].amount)}.`
-      );
-    }
-
-    const overBudget = budgetVsActual.filter((item) => item.utilization > 100);
-
-    if (overBudget.length > 0) {
-      insights.push(
-        `${overBudget.length} budget category/categories exceeded the planned amount.`
-      );
-    }
-
-    if (totals.savingsProgress >= 100) {
-      insights.push("Savings goals are fully achieved for the selected filter.");
-    } else if (totals.savingsProgress > 0) {
-      insights.push(
-        `Savings progress is ${totals.savingsProgress}% for selected goals.`
-      );
-    }
-
-    if (recurringSummary.length > 0) {
-      insights.push(
-        `${recurringSummary.length} recurring transaction(s) found for the selected filter.`
-      );
-    }
-
-    return insights;
-  }, [
-    totals,
-    expenseRanking,
-    incomeRanking,
-    budgetVsActual,
-    recurringSummary,
-  ]);
+  const totalAlertCount = unreadCount + smartAlerts.length;
 
   return {
-    filters: {
-      year,
-      setYear,
-      month,
-      setMonth,
-      startDate,
-      setStartDate,
-      endDate,
-      setEndDate,
-      resetFilters,
-    },
+    userId,
+    notifications,
+    smartAlerts,
+    unreadCount,
+    totalAlertCount,
     loading,
+    saving,
+    updating,
+    deleting,
     error,
-    fetchAnalytics,
-
-    totals,
-    monthlyCashFlow,
-    incomeDistribution,
-    expenseDistribution,
-    incomeRanking,
-    expenseRanking,
-    budgetVsActual,
-    savingsProgress,
-    recurringSummary,
-    recentTransactions,
-    bestWorstMonths,
-    smartInsights,
-
-    backendExpensePie,
-    backendMonthlyBar,
-    backendYearlyBar,
-    backendDateRangeSummary,
-    backendTrend,
+    fetchNotifications,
+    addNotification,
+    saveSmartAlertAsNotification,
+    markAsRead,
+    markAllAsRead,
+    removeNotification,
   };
 };
 
-export default useAnalyticsPage;
+export default useNotifications;
+--------------------------------------------------
+import { useState } from "react";
+import {
+  Badge,
+  Box,
+  Button,
+  Divider,
+  IconButton,
+  Menu,
+  MenuItem,
+  Stack,
+  Typography,
+} from "@mui/material";
+import NotificationsIcon from "@mui/icons-material/Notifications";
+import DoneAllIcon from "@mui/icons-material/DoneAll";
+import { useNavigate } from "react-router-dom";
+import useNotifications from "../../hooks/useNotifications";
+
+const NotificationBell = () => {
+  const navigate = useNavigate();
+  const {
+    notifications,
+    smartAlerts,
+    totalAlertCount,
+    markAsRead,
+    markAllAsRead,
+  } = useNotifications();
+
+  const [anchorEl, setAnchorEl] = useState(null);
+
+  const open = Boolean(anchorEl);
+
+  const handleOpen = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+
+  const latestNotifications = notifications.slice(0, 4);
+  const latestSmartAlerts = smartAlerts.slice(0, 3);
+
+  return (
+    <>
+      <IconButton color="inherit" onClick={handleOpen}>
+        <Badge badgeContent={totalAlertCount} color="error">
+          <NotificationsIcon />
+        </Badge>
+      </IconButton>
+
+      <Menu
+        anchorEl={anchorEl}
+        open={open}
+        onClose={handleClose}
+        PaperProps={{
+          sx: {
+            width: 380,
+            maxWidth: "95vw",
+            borderRadius: 3,
+          },
+        }}
+      >
+        <Box px={2} py={1.5}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Box>
+              <Typography fontWeight={900}>Notifications</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {totalAlertCount} active alert(s)
+              </Typography>
+            </Box>
+
+            <IconButton size="small" onClick={markAllAsRead}>
+              <DoneAllIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+        </Box>
+
+        <Divider />
+
+        {latestSmartAlerts.length > 0 && (
+          <Box px={2} py={1}>
+            <Typography variant="caption" color="text.secondary" fontWeight={800}>
+              SMART FINANCE ALERTS
+            </Typography>
+
+            {latestSmartAlerts.map((alert) => (
+              <MenuItem key={`${alert.type}-${alert.message}`} sx={{ whiteSpace: "normal" }}>
+                <Box>
+                  <Typography fontWeight={800}>{alert.title}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {alert.message}
+                  </Typography>
+                </Box>
+              </MenuItem>
+            ))}
+          </Box>
+        )}
+
+        {latestNotifications.length > 0 && (
+          <Box px={2} py={1}>
+            <Typography variant="caption" color="text.secondary" fontWeight={800}>
+              SYSTEM NOTIFICATIONS
+            </Typography>
+
+            {latestNotifications.map((notification) => (
+              <MenuItem
+                key={notification.notification_id}
+                sx={{ whiteSpace: "normal" }}
+                onClick={() => {
+                  if (notification.is_read !== "Y") {
+                    markAsRead(notification.notification_id);
+                  }
+                }}
+              >
+                <Box>
+                  <Typography fontWeight={800}>{notification.title}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {notification.message}
+                  </Typography>
+                </Box>
+              </MenuItem>
+            ))}
+          </Box>
+        )}
+
+        {latestNotifications.length === 0 && latestSmartAlerts.length === 0 && (
+          <Box px={2} py={4} textAlign="center">
+            <Typography color="text.secondary">No notifications found.</Typography>
+          </Box>
+        )}
+
+        <Divider />
+
+        <Box px={2} py={1.5}>
+          <Button
+            fullWidth
+            variant="contained"
+            onClick={() => {
+              handleClose();
+              navigate("/notifications");
+            }}
+          >
+            View All Notifications
+          </Button>
+        </Box>
+      </Menu>
+    </>
+  );
+};
+
+export default NotificationBell;
+----------------------------------------
+import { useState } from "react";
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  IconButton,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
+import DoneIcon from "@mui/icons-material/Done";
+import DeleteIcon from "@mui/icons-material/Delete";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import AddIcon from "@mui/icons-material/Add";
+import SaveIcon from "@mui/icons-material/Save";
+import PageHeader from "../../components/common/PageHeader";
+import useNotifications from "../../hooks/useNotifications";
+
+const formatDate = (value) => {
+  if (!value) return "-";
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+};
+
+const getAlertColor = (severity) => {
+  if (severity === "error") return "error";
+  if (severity === "warning") return "warning";
+  if (severity === "success") return "success";
+  return "info";
+};
+
+const NotificationsPage = () => {
+  const {
+    notifications,
+    smartAlerts,
+    unreadCount,
+    loading,
+    saving,
+    updating,
+    deleting,
+    error,
+    fetchNotifications,
+    addNotification,
+    saveSmartAlertAsNotification,
+    markAsRead,
+    markAllAsRead,
+    removeNotification,
+  } = useNotifications();
+
+  const [open, setOpen] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [formData, setFormData] = useState({
+    title: "",
+    message: "",
+  });
+
+  const handleOpen = () => {
+    setFormError("");
+    setFormData({
+      title: "",
+      message: "",
+    });
+    setOpen(true);
+  };
+
+  const handleClose = () => {
+    if (!saving) {
+      setOpen(false);
+    }
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setFormError("");
+
+    if (!formData.title.trim()) {
+      setFormError("Title is required");
+      return;
+    }
+
+    if (!formData.message.trim()) {
+      setFormError("Message is required");
+      return;
+    }
+
+    try {
+      await addNotification({
+        title: formData.title.trim(),
+        message: formData.message.trim(),
+      });
+
+      handleClose();
+    } catch (err) {
+      setFormError(err.message || "Failed to create notification");
+    }
+  };
+
+  return (
+    <Box>
+      <PageHeader
+        title="Notifications & Alerts"
+        subtitle="Track finance alerts, smart warnings, recurring reminders and system notifications."
+        breadcrumbs={["Insights", "Notifications"]}
+        actionText="Create Notification"
+        onAction={handleOpen}
+      />
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+
+      <Grid container spacing={3} mb={3}>
+        <Grid item xs={12} md={4}>
+          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+            <CardContent>
+              <Typography color="text.secondary" fontWeight={800}>
+                Total Notifications
+              </Typography>
+              <Typography variant="h4" fontWeight={900}>
+                {notifications.length}
+              </Typography>
+              <Typography color="text.secondary">Stored in database</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+            <CardContent>
+              <Typography color="text.secondary" fontWeight={800}>
+                Unread Notifications
+              </Typography>
+              <Typography variant="h4" fontWeight={900} color="error.main">
+                {unreadCount}
+              </Typography>
+              <Typography color="text.secondary">Need user attention</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+            <CardContent>
+              <Typography color="text.secondary" fontWeight={800}>
+                Smart Finance Alerts
+              </Typography>
+              <Typography variant="h4" fontWeight={900} color="warning.main">
+                {smartAlerts.length}
+              </Typography>
+              <Typography color="text.secondary">Generated from finance data</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={2}
+        justifyContent="space-between"
+        mb={3}
+      >
+        <Stack direction="row" spacing={2}>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={fetchNotifications}
+          >
+            Refresh
+          </Button>
+
+          <Button
+            variant="outlined"
+            startIcon={<DoneIcon />}
+            disabled={updating || unreadCount === 0}
+            onClick={markAllAsRead}
+          >
+            Mark All Read
+          </Button>
+        </Stack>
+
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpen}>
+          Create Notification
+        </Button>
+      </Stack>
+
+      {loading ? (
+        <Box display="flex" justifyContent="center" py={8}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <Grid container spacing={3}>
+          <Grid item xs={12} lg={6}>
+            <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+              <CardContent>
+                <Typography variant="h6" fontWeight={900} mb={2}>
+                  Smart Finance Alerts
+                </Typography>
+
+                {smartAlerts.length === 0 ? (
+                  <Box
+                    sx={{
+                      py: 6,
+                      border: "1px dashed",
+                      borderColor: "divider",
+                      borderRadius: 3,
+                      textAlign: "center",
+                    }}
+                  >
+                    <Typography color="text.secondary">
+                      No smart alerts found. Your finance data looks stable.
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Stack spacing={2}>
+                    {smartAlerts.map((alert) => (
+                      {<Tooltip title="Save as database notification">
+                            <IconButton
+                              color="inherit"
+                              size="small"
+                              onClick={() => saveSmartAlertAsNotification(alert)}
+                            >
+                              <SaveIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        }
+                      >
+                        <Typography fontWeight={900}>{alert.title}</Typography>
+                        <Typography variant="body2">{alert.message}</Typography>
+                      </Alert>
+                    ))}
+                  </Stack>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} lg={6}>
+            <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+              <CardContent>
+                <Typography variant="h6" fontWeight={900} mb={2}>
+                  System Notifications
+                </Typography>
+
+                {notifications.length === 0 ? (
+                  <Box
+                    sx={{
+                      py: 6,
+                      border: "1px dashed",
+                      borderColor: "divider",
+                      borderRadius: 3,
+                      textAlign: "center",
+                    }}
+                  >
+                    <Typography color="text.secondary">
+                      No database notifications found.
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Stack spacing={2}>
+                    {notifications.map((notification) => (
+                      <Card
+                        key={notification.notification_id}
+                        elevation={0}
+                        sx={{
+                          border: "1px solid",
+                          borderColor:
+                            notification.is_read === "Y" ? "divider" : "primary.main",
+                          backgroundColor:
+                            notification.is_read === "Y"
+                              ? "background.paper"
+                              : "action.hover",
+                        }}
+                      >
+                        <CardContent>
+                          <Stack
+                            direction="row"
+                            justifyContent="space-between"
+                            alignItems="flex-start"
+                            spacing={2}
+                          >
+                            <Box>
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <NotificationsActiveIcon color="primary" />
+                                <Typography fontWeight={900}>
+                                  {notification.title}
+                                </Typography>
+
+                                <Chip
+                                  label={
+                                    notification.is_read === "Y" ? "Read" : "Unread"
+                                  }
+                                  color={
+                                    notification.is_read === "Y" ? "default" : "primary"
+                                  }
+                                  size="small"
+                                />
+                              </Stack>
+
+                              <Typography color="text.secondary" mt={1}>
+                                {notification.message}
+                              </Typography>
+
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                display="block"
+                                mt={1}
+                              >
+                                {formatDate(notification.created_at)}
+                              </Typography>
+                            </Box>
+
+                            <Stack direction="row">
+                              {notification.is_read !== "Y" && (
+                                <Tooltip title="Mark as read">
+                                  <IconButton
+                                    color="success"
+                                    disabled={updating}
+                                    onClick={() =>
+                                      markAsRead(notification.notification_id)
+                                    }
+                                  >
+                                    <DoneIcon />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+
+                              <Tooltip title="Delete notification">
+                                <IconButton
+                                  color="error"
+                                  disabled={deleting}
+                                  onClick={() =>
+                                    removeNotification(notification.notification_id)
+                                  }
+                                >
+                                  <DeleteIcon />
+                                </IconButton>
+                              </Tooltip>
+                            </Stack>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Stack>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
+        <DialogTitle fontWeight={900}>Create Notification</DialogTitle>
+
+        <Box component="form" onSubmit={handleSubmit}>
+          <DialogContent>
+            {formError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {formError}
+              </Alert>
+            )}
+
+            <TextField
+              label="Title"
+              value={formData.title}
+              onChange={(event) =>
+                setFormData({ ...formData, title: event.target.value })
+              }
+              fullWidth
+              required
+              margin="normal"
+              placeholder="Example: Budget Alert"
+            />
+
+            <TextField
+              label="Message"
+              value={formData.message}
+              onChange={(event) =>
+                setFormData({ ...formData, message: event.target.value })
+              }
+              fullWidth
+              required
+              multiline
+              rows={4}
+              margin="normal"
+              placeholder="Example: Food budget crossed 80%."
+            />
+          </DialogContent>
+
+          <DialogActions sx={{ px: 3, pb: 3 }}>
+            <Button onClick={handleClose} disabled={saving}>
+              Cancel
+            </Button>
+
+            <Button type="submit" variant="contained" disabled={saving}>
+              {saving ? "Creating..." : "Create"}
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
+    </Box>
+  );
+};
+
+export default NotificationsPage;
+----------------------------------------------
