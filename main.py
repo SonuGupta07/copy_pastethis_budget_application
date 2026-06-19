@@ -1,16 +1,43 @@
 import api from "./axios";
 
-export const getDashboardOverview = async (userId) => {
-  const response = await api.get(`/dashboard/${userId}`);
+export const getAnalyticsExpensePie = async (userId) => {
+  const response = await api.get(`/analytics/pie-chart/${userId}`);
   return response.data;
 };
 
-export const getFinancialHealth = async (userId) => {
-  const response = await api.get(`/financial-health/${userId}`);
+export const getAnalyticsMonthlyBar = async (userId, month, year) => {
+  const response = await api.get(`/analytics/bar-chart/${userId}`, {
+    params: {
+      month,
+      year,
+    },
+  });
+
   return response.data;
 };
 
-export const getTrendAnalysis = async (userId) => {
+export const getAnalyticsYearlyBar = async (userId, year) => {
+  const response = await api.get(`/analytics/bar-chart-year/${userId}`, {
+    params: {
+      year,
+    },
+  });
+
+  return response.data;
+};
+
+export const getAnalyticsDateRange = async (userId, startDate, endDate) => {
+  const response = await api.get(`/analytics/date-range/${userId}`, {
+    params: {
+      start_date: startDate,
+      end_date: endDate,
+    },
+  });
+
+  return response.data;
+};
+
+export const getAnalyticsTrend = async (userId) => {
   const response = await api.get(`/analytics/trend/${userId}`);
   return response.data;
 };
@@ -44,40 +71,24 @@ export const getAllRecurringTransactions = async () => {
   const response = await api.get("/recurring/");
   return response.data;
 };
---------------------------
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  getAllBudgets,
-  getAllCategories,
-  getAllExpenses,
-  getAllIncome,
-  getAllRecurringTransactions,
-  getAllSavingsGoals,
-  getDashboardOverview,
-  getFinancialHealth,
-  getTrendAnalysis,
-} from "../api/dashboardApi";
-import { getUserIdFromToken } from "../utils/jwt";
+--------------------------------------------
+import { useCallback, useEffect, useMemo, useState } from "react";import { useCallback, useEffect, useMemo, useState 0, 0);
 
-const monthLabels = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
+  if (startDate) {
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
 
-const normalizeArray = (data) => {
-  if (Array.isArray(data)) return data;
-  if (!data) return [];
-  return [data];
-};
+    if (recordDate < start) return false;
+  }
 
-const getYear = (dateValue) => {
-  if (!dateValue) return null;
-  return new Date(dateValue).getFullYear();
-};
+  if (endDate) {
+    const end = new Date(endDate);
+    end.setHours(0, 0, 0, 0);
 
-const getMonth = (dateValue) => {
-  if (!dateValue) return null;
-  return new Date(dateValue).getMonth() + 1;
+    if (recordDate > end) return false;
+  }
+
+  return true;
 };
 
 const groupByCategory = (records, categories, amountKey) => {
@@ -97,21 +108,21 @@ const groupByCategory = (records, categories, amountKey) => {
       (grouped[categoryName] || 0) + Number(record[amountKey] || 0);
   });
 
-  return Object.entries(grouped).map(([category, amount]) => ({
-    category,
-    amount,
-  }));
+  return Object.entries(grouped)
+    .map(([category, amount]) => ({
+      category,
+      amount,
+    }))
+    .sort((a, b) => b.amount - a.amount);
 };
 
-const useDashboard = () => {
+const useAnalyticsPage = () => {
   const userId = useMemo(() => getUserIdFromToken(), []);
 
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState("ALL");
-
-  const [overview, setOverview] = useState(null);
-  const [financialHealth, setFinancialHealth] = useState(null);
-  const [trend, setTrend] = useState(null);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const [categories, setCategories] = useState([]);
   const [incomeList, setIncomeList] = useState([]);
@@ -120,10 +131,16 @@ const useDashboard = () => {
   const [savingsGoals, setSavingsGoals] = useState([]);
   const [recurringList, setRecurringList] = useState([]);
 
+  const [backendExpensePie, setBackendExpensePie] = useState([]);
+  const [backendMonthlyBar, setBackendMonthlyBar] = useState(null);
+  const [backendYearlyBar, setBackendYearlyBar] = useState([]);
+  const [backendDateRangeSummary, setBackendDateRangeSummary] = useState(null);
+  const [backendTrend, setBackendTrend] = useState(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const fetchDashboard = useCallback(async () => {
+  const fetchAnalytics = useCallback(async () => {
     if (!userId) {
       setError("User ID not found in token. Please login again.");
       return;
@@ -133,39 +150,44 @@ const useDashboard = () => {
     setError("");
 
     try {
+      const selectedMonthForBackend =
+        month === "ALL" ? new Date().getMonth() + 1 : Number(month);
+
+      const safeStartDate = startDate || `${year}-01-01`;
+      const safeEndDate = endDate || `${year}-12-31`;
+
       const results = await Promise.allSettled([
-        getDashboardOverview(userId),
-        getFinancialHealth(userId),
-        getTrendAnalysis(userId),
         getAllCategories(),
         getAllIncome(),
         getAllExpenses(),
         getAllBudgets(),
         getAllSavingsGoals(),
         getAllRecurringTransactions(),
+
+        getAnalyticsExpensePie(userId),
+        getAnalyticsMonthlyBar(userId, selectedMonthForBackend, year),
+        getAnalyticsYearlyBar(userId, year),
+        getAnalyticsDateRange(userId, safeStartDate, safeEndDate),
+        getAnalyticsTrend(userId),
       ]);
 
-      if (results[0].status === "fulfilled") setOverview(results[0].value);
-      if (results[1].status === "fulfilled") setFinancialHealth(results[1].value);
-      if (results[2].status === "fulfilled") setTrend(results[2].value);
-
       const allCategories =
-        results[3].status === "fulfilled" ? normalizeArray(results[3].value) : [];
+        results[0].status === "fulfilled" ? normalizeArray(results[0].value) : [];
 
       const allIncome =
-        results[4].status === "fulfilled" ? normalizeArray(results[4].value) : [];
+        results[1].status === "fulfilled" ? normalizeArray(results[1].value) : [];
 
       const allExpenses =
-        results[5].status === "fulfilled" ? normalizeArray(results[5].value) : [];
+        results[2].status === "fulfilled" ? normalizeArray(results[2].value) : [];
 
       const allBudgets =
-        results[6].status === "fulfilled" ? normalizeArray(results[6].value) : [];
+        results[3].status === "fulfilled" ? normalizeArray(results[3].value) : [];
 
       const allSavings =
-        results[7].status === "fulfilled" ? normalizeArray(results[7].value) : [];
+        results[4].status === "fulfilled" ? normalizeArray(results[4].value) : [];
 
       const allRecurring =
-        results[8].status === "fulfilled" ? normalizeArray(results[8].value) : [];
+        results[5].status === "fulfilled" ? normalizeArray(results[5].value) : [];
 
       setCategories(allCategories);
 
@@ -188,20 +210,47 @@ const useDashboard = () => {
       setRecurringList(
         allRecurring.filter((item) => Number(item.user_id) === Number(userId))
       );
+
+      if (results[6].status === "fulfilled") {
+        setBackendExpensePie(normalizeArray(results[6].value));
+      }
+
+      if (results[7].status === "fulfilled") {
+        setBackendMonthlyBar(results[7].value);
+      }
+
+      if (results[8].status === "fulfilled") {
+        setBackendYearlyBar(normalizeArray(results[8].value));
+      }
+
+      if (results[9].status === "fulfilled") {
+        setBackendDateRangeSummary(results[9].value);
+      }
+
+      if (results[10].status === "fulfilled") {
+        setBackendTrend(results[10].value);
+      }
     } catch (err) {
       setError(
         err.response?.data?.detail ||
           err.response?.data?.message ||
-          "Failed to load dashboard"
+          "Failed to load analytics data"
       );
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, year, month, startDate, endDate]);
 
   useEffect(() => {
-    fetchDashboard();
-  }, [fetchDashboard]);
+    fetchAnalytics();
+  }, [fetchAnalytics]);
+
+  const resetFilters = () => {
+    setYear(new Date().getFullYear());
+    setMonth("ALL");
+    setStartDate("");
+    setEndDate("");
+  };
 
   const categoryMap = useMemo(() => {
     const map = {};
@@ -213,54 +262,114 @@ const useDashboard = () => {
     return map;
   }, [categories]);
 
-  const yearIncome = useMemo(() => {
-    return incomeList.filter(
-      (item) => Number(getYear(item.income_date)) === Number(year)
-    );
-  }, [incomeList, year]);
+  const filterByPeriod = useCallback(
+    (records, dateKey) => {
+      return records.filter((record) => {
+        const recordDate = record[dateKey];
 
-  const yearExpenses = useMemo(() => {
-    return expenseList.filter(
-      (item) => Number(getYear(item.expense_date)) === Number(year)
-    );
-  }, [expenseList, year]);
+        if (!recordDate) return false;
+
+        const matchesYear = Number(getYear(recordDate)) === Number(year);
+
+        const matchesMonth =
+          month === "ALL" || Number(getMonth(recordDate)) === Number(month);
+
+        const matchesDateRange = isWithinDateRange(
+          recordDate,
+          startDate,
+          endDate
+        );
+
+        return matchesYear && matchesMonth && matchesDateRange;
+      });
+    },
+    [year, month, startDate, endDate]
+  );
 
   const periodIncome = useMemo(() => {
-    if (month === "ALL") return yearIncome;
-
-    return yearIncome.filter(
-      (item) => Number(getMonth(item.income_date)) === Number(month)
-    );
-  }, [yearIncome, month]);
+    return filterByPeriod(incomeList, "income_date");
+  }, [incomeList, filterByPeriod]);
 
   const periodExpenses = useMemo(() => {
-    if (month === "ALL") return yearExpenses;
-
-    return yearExpenses.filter(
-      (item) => Number(getMonth(item.expense_date)) === Number(month)
-    );
-  }, [yearExpenses, month]);
+    return filterByPeriod(expenseList, "expense_date");
+  }, [expenseList, filterByPeriod]);
 
   const periodBudgets = useMemo(() => {
     return budgetList.filter((budget) => {
       const matchesYear = Number(budget.year) === Number(year);
+
       const matchesMonth =
         month === "ALL" || Number(budget.month) === Number(month);
 
-      return matchesYear && matchesMonth;
+      if (!matchesYear || !matchesMonth) return false;
+
+      if (!startDate && !endDate) return true;
+
+      const budgetDate = `${budget.year}-${String(budget.month).padStart(
+        2,
+        "0"
+      )}-01`;
+
+      return isWithinDateRange(budgetDate, startDate, endDate);
     });
-  }, [budgetList, year, month]);
+  }, [budgetList, year, month, startDate, endDate]);
+
+  const periodSavingsGoals = useMemo(() => {
+    return savingsGoals.filter((goal) => {
+      const targetDate = goal.target_date;
+
+      if (!targetDate) return false;
+
+      const matchesYear = Number(getYear(targetDate)) === Number(year);
+
+      const matchesMonth =
+        month === "ALL" || Number(getMonth(targetDate)) === Number(month);
+
+      const matchesDateRange = isWithinDateRange(
+        targetDate,
+        startDate,
+        endDate
+      );
+
+      return matchesYear && matchesMonth && matchesDateRange;
+    });
+  }, [savingsGoals, year, month, startDate, endDate]);
+
+  const periodRecurring = useMemo(() => {
+    return recurringList.filter((item) => {
+      const runDate = item.next_run_date;
+
+      if (!runDate) return false;
+
+      const matchesYear = Number(getYear(runDate)) === Number(year);
+
+      const matchesMonth =
+        month === "ALL" || Number(getMonth(runDate)) === Number(month);
+
+      const matchesDateRange = isWithinDateRange(runDate, startDate, endDate);
+
+      return matchesYear && matchesMonth && matchesDateRange;
+    });
+  }, [recurringList, year, month, startDate, endDate]);
 
   const monthlyCashFlow = useMemo(() => {
     return monthLabels.map((monthName, index) => {
       const monthNumber = index + 1;
 
-      const income = yearIncome
-        .filter((item) => Number(getMonth(item.income_date)) === monthNumber)
+      const income = incomeList
+        .filter(
+          (item) =>
+            Number(getYear(item.income_date)) === Number(year) &&
+            Number(getMonth(item.income_date)) === Number(monthNumber)
+        )
         .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
-      const expense = yearExpenses
-        .filter((item) => Number(getMonth(item.expense_date)) === monthNumber)
+      const expense = expenseList
+        .filter(
+          (item) =>
+            Number(getYear(item.expense_date)) === Number(year) &&
+            Number(getMonth(item.expense_date)) === Number(monthNumber)
+        )
         .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
       return {
@@ -270,7 +379,7 @@ const useDashboard = () => {
         balance: income - expense,
       };
     });
-  }, [yearIncome, yearExpenses]);
+  }, [incomeList, expenseList, year]);
 
   const incomeDistribution = useMemo(() => {
     return groupByCategory(periodIncome, categories, "amount");
@@ -280,85 +389,82 @@ const useDashboard = () => {
     return groupByCategory(periodExpenses, categories, "amount");
   }, [periodExpenses, categories]);
 
-  const budgetCategorySummary = useMemo(() => {
+  const incomeRanking = useMemo(() => {
+    return incomeDistribution.slice(0, 8);
+  }, [incomeDistribution]);
+
+  const expenseRanking = useMemo(() => {
+    return expenseDistribution.slice(0, 8);
+  }, [expenseDistribution]);
+
+  const budgetVsActual = useMemo(() => {
     return periodBudgets.map((budget) => {
-      const expenseForBudget = yearExpenses
-        .filter((expense) => {
-          const sameCategory =
-            Number(expense.category_id) === Number(budget.category_id);
-
-          const sameMonth =
-            Number(getMonth(expense.expense_date)) === Number(budget.month);
-
-          return sameCategory && sameMonth;
-        })
-        .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+      const expense = periodExpenses
+        .filter((item) => Number(item.category_id) === Number(budget.category_id))
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
       const budgetAmount = Number(budget.budget_amount || 0);
 
       return {
-        category_id: budget.category_id,
-        category_name: categoryMap[Number(budget.category_id)] || "Unknown",
-        month: budget.month,
-        year: budget.year,
+        category: categoryMap[Number(budget.category_id)] || "Unknown",
         budget: budgetAmount,
-        expense: expenseForBudget,
-        remaining: budgetAmount - expenseForBudget,
-        utilization_percentage:
+        expense,
+        remaining: budgetAmount - expense,
+        utilization:
           budgetAmount > 0
-            ? Number(((expenseForBudget / budgetAmount) * 100).toFixed(2))
+            ? Number(((expense / budgetAmount) * 100).toFixed(2))
             : 0,
       };
     });
-  }, [periodBudgets, yearExpenses, categoryMap]);
+  }, [periodBudgets, periodExpenses, categoryMap]);
+
+  const savingsProgress = useMemo(() => {
+    return periodSavingsGoals.map((goal) => {
+      const target = Number(goal.target_amount || 0);
+      const current = Number(goal.current_amount || 0);
+
+      return {
+        goal: goal.goal_name,
+        target,
+        current,
+        remaining: Math.max(target - current, 0),
+        progress: target > 0 ? Number(((current / target) * 100).toFixed(2)) : 0,
+        status: goal.status,
+        target_date: goal.target_date,
+      };
+    });
+  }, [periodSavingsGoals]);
+
+  const recurringSummary = useMemo(() => {
+    return periodRecurring.map((item) => ({
+      ...item,
+      category: categoryMap[Number(item.category_id)] || "Unknown",
+    }));
+  }, [periodRecurring, categoryMap]);
 
   const recentTransactions = useMemo(() => {
-    const incomeTransactions = incomeList.map((item) => ({
+    const incomeTransactions = periodIncome.map((item) => ({
       id: `income-${item.income_id}`,
       type: "INCOME",
+      category: categoryMap[Number(item.category_id)] || "Income",
       description: item.description,
       amount: Number(item.amount || 0),
       date: item.income_date,
-      category: categoryMap[Number(item.category_id)] || "Income",
     }));
 
-    const expenseTransactions = expenseList.map((item) => ({
+    const expenseTransactions = periodExpenses.map((item) => ({
       id: `expense-${item.expense_id}`,
       type: "EXPENSE",
+      category: categoryMap[Number(item.category_id)] || "Expense",
       description: item.description,
       amount: Number(item.amount || 0),
       date: item.expense_date,
-      category: categoryMap[Number(item.category_id)] || "Expense",
     }));
 
     return [...incomeTransactions, ...expenseTransactions]
       .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 8);
-  }, [incomeList, expenseList, categoryMap]);
-
-  const upcomingRecurring = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return recurringList
-      .map((item) => {
-        const nextDate = new Date(item.next_run_date);
-        nextDate.setHours(0, 0, 0, 0);
-
-        const daysLeft = Math.ceil(
-          (nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-        );
-
-        return {
-          ...item,
-          category_name: categoryMap[Number(item.category_id)] || "Unknown",
-          days_left: daysLeft,
-        };
-      })
-      .filter((item) => item.days_left >= 0)
-      .sort((a, b) => a.days_left - b.days_left)
-      .slice(0, 5);
-  }, [recurringList, categoryMap]);
+      .slice(0, 10);
+  }, [periodIncome, periodExpenses, categoryMap]);
 
   const totals = useMemo(() => {
     const totalIncome = periodIncome.reduce(
@@ -376,89 +482,191 @@ const useDashboard = () => {
       0
     );
 
-    const savingsTarget = savingsGoals.reduce(
+    const savingsTarget = periodSavingsGoals.reduce(
       (sum, item) => sum + Number(item.target_amount || 0),
       0
     );
 
-    const currentSavings = savingsGoals.reduce(
+    const currentSavings = periodSavingsGoals.reduce(
       (sum, item) => sum + Number(item.current_amount || 0),
       0
     );
 
-    const savingsProgress =
-      savingsTarget > 0
-        ? Number(((currentSavings / savingsTarget) * 100).toFixed(2))
-        : 0;
-
-    const budgetUtilization =
-      totalBudget > 0
-        ? Number(((totalExpense / totalBudget) * 100).toFixed(2))
-        : 0;
-
     return {
       totalIncome,
       totalExpense,
-      totalBudget,
       netBalance: totalIncome - totalExpense,
+      totalBudget,
+      remainingBudget: totalBudget - totalExpense,
+      budgetUtilization:
+        totalBudget > 0
+          ? Number(((totalExpense / totalBudget) * 100).toFixed(2))
+          : 0,
       savingsTarget,
       currentSavings,
-      savingsProgress,
-      budgetUtilization,
-      remainingBudget: totalBudget - totalExpense,
+      savingsProgress:
+        savingsTarget > 0
+          ? Number(((currentSavings / savingsTarget) * 100).toFixed(2))
+          : 0,
+      expenseRatio:
+        totalIncome > 0
+          ? Number(((totalExpense / totalIncome) * 100).toFixed(2))
+          : 0,
     };
-  }, [periodIncome, periodExpenses, periodBudgets, savingsGoals]);
+  }, [periodIncome, periodExpenses, periodBudgets, periodSavingsGoals]);
 
-  const computedHealthScore = useMemo(() => {
-    let score = 50;
+  const bestWorstMonths = useMemo(() => {
+    const sorted = [...monthlyCashFlow].sort((a, b) => b.balance - a.balance);
 
-    if (totals.totalIncome > 0) {
-      const expenseRatio = totals.totalExpense / totals.totalIncome;
-      const savingsRatio = totals.currentSavings / totals.totalIncome;
+    return {
+      bestMonth: sorted[0] || null,
+      worstMonth: sorted[sorted.length - 1] || null,
+    };
+  }, [monthlyCashFlow]);
 
-      if (expenseRatio <= 0.5) score += 20;
-      else if (expenseRatio <= 0.75) score += 10;
-      else score -= 10;
+  const smartInsights = useMemo(() => {
+    const insights = [];
 
-      if (savingsRatio >= 0.2) score += 20;
-      else if (savingsRatio >= 0.1) score += 10;
+    if (totals.totalIncome === 0) {
+      insights.push("No income found for the selected filter.");
     }
 
-    if (totals.totalBudget > 0) {
-      const budgetUsage = totals.totalExpense / totals.totalBudget;
-
-      if (budgetUsage <= 0.8) score += 10;
-      else if (budgetUsage > 1) score -= 15;
+    if (totals.totalExpense === 0) {
+      insights.push("No expenses found for the selected filter.");
     }
 
-    return Math.max(0, Math.min(100, score));
-  }, [totals]);
+    if (totals.expenseRatio > 80) {
+      insights.push(
+        "Expenses are above 80% of income. Spending control is recommended."
+      );
+    } else if (totals.expenseRatio > 50) {
+      insights.push(
+        "Expenses are moderate. Monitor high spending categories."
+      );
+    } else if (totals.totalIncome > 0) {
+      insights.push(
+        "Expense-to-income ratio looks healthy for the selected period."
+      );
+    }
+
+    if (expenseRanking.length > 0) {
+      insights.push(
+        `Highest spending category is ${expenseRanking[0].category} with amount ${expenseRanking[0].amount}.`
+      );
+    }
+
+    const overBudget = budgetVsActual.filter((item) => item.utilization > 100);
+
+    if (overBudget.length > 0) {
+      insights.push(
+        `${overBudget.length} budget category/categories exceeded the planned amount.`
+      );
+    }
+
+    if (totals.savingsProgress >= 100) {
+      insights.push("Savings goals are fully achieved for the selected filter.");
+    } else if (totals.savingsProgress > 0) {
+      insights.push(
+        `Savings progress is ${totals.savingsProgress}% for selected goals.`
+      );
+    }
+
+    if (recurringSummary.length > 0) {
+      insights.push(
+        `${recurringSummary.length} recurring transaction(s) found for the selected filter.`
+      );
+    }
+
+    return insights;
+  }, [totals, expenseRanking, budgetVsActual, recurringSummary]);
 
   return {
-    userId,
-    year,
-    setYear,
-    month,
-    setMonth,
-    overview,
-    financialHealth,
-    trend,
+    filters: {
+      year,
+      setYear,
+      month,
+      setMonth,
+      startDate,
+      setStartDate,
+      endDate,
+      setEndDate,
+      resetFilters,
+    },
+    loading,
+    error,
+    fetchAnalytics,
+    totals,
     monthlyCashFlow,
     incomeDistribution,
     expenseDistribution,
-    budgetCategorySummary,
+    incomeRanking,
+    expenseRanking,
+    budgetVsActual,
+    savingsProgress,
+    recurringSummary,
     recentTransactions,
-    upcomingRecurring,
-    totals,
-    computedHealthScore,
-    loading,
-    error,
-    fetchDashboard,
+    bestWorstMonths,
+    smartInsights,
+    backendExpensePie,
+    backendMonthlyBar,
+    backendYearlyBar,
+    backendDateRangeSummary,
+    backendTrend,
   };
 };
 
-export default useDashboard;
--------------------------------------------
+export default useAnalyticsPage;
+import {
+  getAllBudgets,
+  getAllCategories,
+  getAllExpenses,
+  getAllIncome,
+  getAllRecurringTransactions,
+  getAllSavingsGoals,
+  getAnalyticsDateRange,
+  getAnalyticsExpensePie,
+  getAnalyticsMonthlyBar,
+  getAnalyticsTrend,
+  getAnalyticsYearlyBar,
+} from "../api/analyticsPageApi";
+import { getUserIdFromToken } from "../utils/jwt";
+
+const monthLabels = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+const normalizeArray = (data) => {
+  if (Array.isArray(data)) return data;
+  if (!data) return [];
+  return [data];
+};
+
+const getYear = (dateValue) => {
+  if (!dateValue) return null;
+  return new Date(dateValue).getFullYear();
+};
+
+const getMonth = (dateValue) => {
+  if (!dateValue) return null;
+  return new Date(dateValue).getMonth() + 1;
+};
+
+const isWithinDateRange = (dateValue, startDate, endDate) => {
+  if (!dateValue) return false;
+
+  const recordDate = new Date(dateValue);
+------------------------------------------------------------
 import {
   Alert,
   Box,
@@ -466,7 +674,731 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
+  Circular drill-down analysis using backend analytics APIs plus interactive frontend filtered analytics."  CircularProgress,
+        breadcrumbs={["Insights", "Analytics"]}
+      />
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+
+      <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider", mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" fontWeight={900} mb={2}>
+            Analytics Filters
+          </Typography>
+
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6} md={2}>
+              <TextField
+                label="Year"
+                type="number"
+                size="small"
+                fullWidth
+                value={filters.year}
+                onChange={(event) => filters.setYear(event.target.value)}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6} md={2}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Month</InputLabel>
+                <Select
+                  label="Month"
+                  value={filters.month}
+                  onChange={(event) => filters.setMonth(event.target.value)}
+                >
+                  {monthOptions.map((item) => (
+                    <MenuItem key={item.label} value={item.value}>
+                      {item.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} sm={6} md={2.5}>
+              <TextField
+                label="Start Date"
+                type="date"
+                size="small"
+                fullWidth
+                value={filters.startDate}
+                onChange={(event) => filters.setStartDate(event.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6} md={2.5}>
+              <TextField
+                label="End Date"
+                type="date"
+                size="small"
+                fullWidth
+                value={filters.endDate}
+                onChange={(event) => filters.setEndDate(event.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={3}>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="contained"
+                  startIcon={<RefreshIcon />}
+                  onClick={fetchAnalytics}
+                  fullWidth
+                >
+                  Apply
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  startIcon={<RestartAltIcon />}
+                  onClick={filters.resetFilters}
+                  fullWidth
+                >
+                  Reset
+                </Button>
+              </Stack>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      {loading ? (
+        <Box display="flex" justifyContent="center" py={10}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <>
+          <Grid container spacing={2.5} mb={3}>
+            <Grid item xs={12} sm={6} lg={2.4}>
+              <KpiCard
+                title="Income"
+                value={formatCurrency(totals.totalIncome)}
+                subtitle="Filtered income"
+                icon={<TrendingUpIcon />}
+                color="linear-gradient(135deg, #16a34a, #22c55e)"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6} lg={2.4}>
+              <KpiCard
+                title="Expense"
+                value={formatCurrency(totals.totalExpense)}
+                subtitle={`${totals.expenseRatio}% of income`}
+                icon={<ReceiptLongIcon />}
+                color="linear-gradient(135deg, #dc2626, #ef4444)"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6} lg={2.4}>
+              <KpiCard
+                title="Net Balance"
+                value={formatCurrency(totals.netBalance)}
+                subtitle={totals.netBalance >= 0 ? "Positive" : "Negative"}
+                icon={<AccountBalanceWalletIcon />}
+                color="linear-gradient(135deg, #2563eb, #7c3aed)"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6} lg={2.4}>
+              <KpiCard
+                title="Budget Usage"
+                value={`${totals.budgetUtilization}%`}
+                subtitle={`${formatCurrency(totals.remainingBudget)} remaining`}
+                icon={<InsightsIcon />}
+                color="linear-gradient(135deg, #f59e0b, #ef4444)"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6} lg={2.4}>
+              <KpiCard
+                title="Savings"
+                value={`${totals.savingsProgress}%`}
+                subtitle={`${formatCurrency(totals.currentSavings)} saved`}
+                icon={<SavingsIcon />}
+                color="linear-gradient(135deg, #059669, #10b981)"
+              />
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3} mb={3}>
+            <Grid item xs={12} md={4}>
+              <ChartCard
+                title="Backend Date Range Summary"
+                subtitle="Official backend-calculated income, expense and balance."
+              >
+                {!backendDateRangeSummary ? (
+                  <Typography color="text.secondary">
+                    No backend date-range summary available.
+                  </Typography>
+                ) : (
+                  <Stack spacing={2}>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography color="text.secondary">Income</Typography>
+                      <Typography fontWeight={900} color="success.main">
+                        {formatCurrency(backendDateRangeSummary.total_income)}
+                      </Typography>
+                    </Stack>
+
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography color="text.secondary">Expense</Typography>
+                      <Typography fontWeight={900} color="error.main">
+                        {formatCurrency(backendDateRangeSummary.total_expense)}
+                      </Typography>
+                    </Stack>
+
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography color="text.secondary">Net Balance</Typography>
+                      <Typography
+                        fontWeight={900}
+                        color={
+                          Number(backendDateRangeSummary.net_balance || 0) >= 0
+                            ? "success.main"
+                            : "error.main"
+                        }
+                      >
+                        {formatCurrency(backendDateRangeSummary.net_balance)}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                )}
+              </ChartCard>
+            </Grid>
+
+            <Grid item xs={12} md={4}>
+              <ChartCard
+                title="Backend Month Snapshot"
+                subtitle="Official backend month/year income and expense."
+              >
+                {!backendMonthlyBar ? (
+                  <Typography color="text.secondary">
+                    No backend monthly snapshot available.
+                  </Typography>
+                ) : (
+                  <Stack spacing={2}>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography color="text.secondary">Income</Typography>
+                      <Typography fontWeight={900} color="success.main">
+                        {formatCurrency(backendMonthlyBar.income)}
+                      </Typography>
+                    </Stack>
+
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography color="text.secondary">Expense</Typography>
+                      <Typography fontWeight={900} color="error.main">
+                        {formatCurrency(backendMonthlyBar.expense)}
+                      </Typography>
+                    </Stack>
+
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography color="text.secondary">Balance</Typography>
+                      <Typography fontWeight={900}>
+                        {formatCurrency(
+                          Number(backendMonthlyBar.income || 0) -
+                            Number(backendMonthlyBar.expense || 0)
+                        )}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                )}
+              </ChartCard>
+            </Grid>
+
+            <Grid item xs={12} md={4}>
+              <ChartCard
+                title="Backend Trend Analysis"
+                subtitle="Official backend-generated trend insight."
+              >
+                {!backendTrend ? (
+                  <Typography color="text.secondary">
+                    No backend trend data available.
+                  </Typography>
+                ) : (
+                  <Stack spacing={1.5}>
+                    <Chip
+                      label={`Income: ${backendTrend.income_trend || "STABLE"} (${
+                        backendTrend.income_change_percent || 0
+                      }%)`}
+                      color={
+                        backendTrend.income_trend === "INCREASING"
+                          ? "success"
+                          : backendTrend.income_trend === "DECREASING"
+                          ? "warning"
+                          : "default"
+                      }
+                      sx={{ fontWeight: 800 }}
+                    />
+
+                    <Chip
+                      label={`Expense: ${
+                        backendTrend.expense_trend || "STABLE"
+                      } (${backendTrend.expense_change_percent || 0}%)`}
+                      color={
+                        backendTrend.expense_trend === "INCREASING"
+                          ? "error"
+                          : backendTrend.expense_trend === "DECREASING"
+                          ? "success"
+                          : "default"
+                      }
+                      sx={{ fontWeight: 800 }}
+                    />
+
+                    <Alert severity="info">
+                      {backendTrend.summary || "Backend trend summary unavailable."}
+                    </Alert>
+                  </Stack>
+                )}
+              </ChartCard>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3} mb={3}>
+            <Grid item xs={12}>
+              <ChartCard
+                title="Backend Yearly Income vs Expense"
+                subtitle="Official backend-generated year-wise monthly data."
+              >
+                {backendYearlyBar.length === 0 ? (
+                  <Typography color="text.secondary">
+                    No backend yearly chart data available.
+                  </Typography>
+                ) : (
+                  <ResponsiveContainer width="100%" height={350}>
+                    <BarChart data={backendYearlyBar}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.35} />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => formatCurrency(value)} />
+                      <Legend />
+                      <Bar
+                        dataKey="income"
+                        name="Backend Income"
+                        fill="#16a34a"
+                        radius={[8, 8, 0, 0]}
+                      />
+                      <Bar
+                        dataKey="expense"
+                        name="Backend Expense"
+                        fill="#dc2626"
+                        radius={[8, 8, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartCard>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3} mb={3}>
+            <Grid item xs={12}>
+              <ChartCard
+                title="Interactive Monthly Income, Expense and Net Balance"
+                subtitle="Frontend-filtered trend using raw APIs."
+              >
+                <ResponsiveContainer width="100%" height={380}>
+                  <ComposedChart data={monthlyCashFlow}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.35} />
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                    <Legend />
+                    <Bar
+                      dataKey="income"
+                      name="Income"
+                      fill="#16a34a"
+                      radius={[8, 8, 0, 0]}
+                      maxBarSize={35}
+                    />
+                    <Bar
+                      dataKey="expense"
+                      name="Expense"
+                      fill="#dc2626"
+                      radius={[8, 8, 0, 0]}
+                      maxBarSize={35}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="balance"
+                      name="Balance Area"
+                      fill="#2563eb"
+                      stroke="none"
+                      fillOpacity={0.08}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="balance"
+                      name="Net Balance"
+                      stroke="#2563eb"
+                      strokeWidth={3}
+                      dot={{ r: 4 }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3} mb={3}>
+            <Grid item xs={12} md={4}>
+              <ChartCard
+                title="Backend Expense Pie"
+                subtitle="Backend all-time expense distribution."
+              >
+                <DonutChart
+                  data={backendExpensePie}
+                  emptyText="No backend expense pie data available."
+                />
+              </ChartCard>
+            </Grid>
+
+            <Grid item xs={12} md={4}>
+              <ChartCard
+                title="Filtered Expense Distribution"
+                subtitle="Expense distribution for selected filters."
+              >
+                <DonutChart
+                  data={expenseDistribution}
+                  emptyText="No filtered expense data found."
+                />
+              </ChartCard>
+            </Grid>
+
+            <Grid item xs={12} md={4}>
+              <ChartCard
+                title="Filtered Income Distribution"
+                subtitle="Income distribution for selected filters."
+              >
+                <DonutChart
+                  data={incomeDistribution}
+                  emptyText="No filtered income data found."
+                />
+              </ChartCard>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3} mb={3}>
+            <Grid item xs={12} md={6}>
+              <ChartCard
+                title="Top Expense Categories"
+                subtitle="Highest spending categories for selected filters."
+              >
+                {expenseRanking.length === 0 ? (
+                  <Typography color="text.secondary">
+                    No expense ranking available.
+                  </Typography>
+                ) : (
+                  <ResponsiveContainer width="100%" height={330}>
+                    <BarChart
+                      data={expenseRanking}
+                      layout="vertical"
+                      margin={{ left: 40 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.35} />
+                      <XAxis type="number" />
+                      <YAxis dataKey="category" type="category" width={120} />
+                      <Tooltip formatter={(value) => formatCurrency(value)} />
+                      <Bar dataKey="amount" fill="#dc2626" radius={[0, 8, 8, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartCard>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <ChartCard
+                title="Top Income Sources"
+                subtitle="Highest income categories for selected filters."
+              >
+                {incomeRanking.length === 0 ? (
+                  <Typography color="text.secondary">
+                    No income ranking available.
+                  </Typography>
+                ) : (
+                  <ResponsiveContainer width="100%" height={330}>
+                    <BarChart
+                      data={incomeRanking}
+                      layout="vertical"
+                      margin={{ left: 40 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.35} />
+                      <XAxis type="number" />
+                      <YAxis dataKey="category" type="category" width={120} />
+                      <Tooltip formatter={(value) => formatCurrency(value)} />
+                      <Bar dataKey="amount" fill="#16a34a" radius={[0, 8, 8, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartCard>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3} mb={3}>
+            <Grid item xs={12} lg={7}>
+              <ChartCard
+                title="Budget vs Actual"
+                subtitle="Budget and actual expense comparison."
+              >
+                {budgetVsActual.length === 0 ? (
+                  <Typography color="text.secondary">
+                    No budget data found.
+                  </Typography>
+                ) : (
+                  <ResponsiveContainer width="100%" height={360}>
+                    <BarChart data={budgetVsActual}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.35} />
+                      <XAxis dataKey="category" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => formatCurrency(value)} />
+                      <Legend />
+                      <Bar
+                        dataKey="budget"
+                        name="Budget"
+                        fill="#2563eb"
+                        radius={[8, 8, 0, 0]}
+                      />
+                      <Bar
+                        dataKey="expense"
+                        name="Actual Expense"
+                        fill="#dc2626"
+                        radius={[8, 8, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartCard>
+            </Grid>
+
+            <Grid item xs={12} lg={5}>
+              <ChartCard
+                title="Budget Utilization Matrix"
+                subtitle="Budget usage percentage by category."
+              >
+                {budgetVsActual.length === 0 ? (
+                  <Typography color="text.secondary">
+                    No utilization records available.
+                  </Typography>
+                ) : (
+                  <Stack spacing={2}>
+                    {budgetVsActual.map((item) => (
+                      <Box key={item.category}>
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography fontWeight={800}>{item.category}</Typography>
+                          <Typography fontWeight={900}>
+                            {item.utilization}%
+                          </Typography>
+                        </Stack>
+                        <LinearProgress
+                          variant="determinate"
+                          value={Math.min(item.utilization, 100)}
+                          color={
+                            item.utilization >= 90
+                              ? "error"
+                              : item.utilization >= 70
+                              ? "warning"
+                              : "success"
+                          }
+                          sx={{ height: 9, borderRadius: 10, mt: 1 }}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          Remaining: {formatCurrency(item.remaining)}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
+              </ChartCard>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3} mb={3}>
+            <Grid item xs={12} lg={6}>
+              <ChartCard
+                title="Savings Goal Analysis"
+                subtitle="Goal-wise savings progress."
+              >
+                {savingsProgress.length === 0 ? (
+                  <Typography color="text.secondary">
+                    No savings goals found.
+                  </Typography>
+                ) : (
+                  <Stack spacing={2}>
+                    {savingsProgress.map((goal) => (
+                      <Box key={goal.goal}>
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography fontWeight={800}>{goal.goal}</Typography>
+                          <Typography fontWeight={900}>{goal.progress}%</Typography>
+                        </Stack>
+                        <LinearProgress
+                          variant="determinate"
+                          value={Math.min(goal.progress, 100)}
+                          color={goal.progress >= 100 ? "success" : "primary"}
+                          sx={{ height: 9, borderRadius: 10, mt: 1 }}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          {formatCurrency(goal.current)} saved of{" "}
+                          {formatCurrency(goal.target)} • Target:{" "}
+                          {formatDate(goal.target_date)}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
+              </ChartCard>
+            </Grid>
+
+            <Grid item xs={12} lg={6}>
+              <ChartCard
+                title="Recurring Transaction Analysis"
+                subtitle="Recurring transactions for selected run-date filter."
+              >
+                {recurringSummary.length === 0 ? (
+                  <Typography color="text.secondary">
+                    No recurring transactions found.
+                  </Typography>
+                ) : (
+                  <Stack spacing={1.5}>
+                    {recurringSummary.map((item) => (
+                      <Box
+                        key={item.recurring_id}
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 3,
+                          backgroundColor: "action.hover",
+                        }}
+                      >
+                        <Stack direction="row" justifyContent="space-between">
+                          <Box>
+                            <Typography fontWeight={900}>{item.category}</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {item.transaction_type} • {item.frequency} •{" "}
+                              {formatDate(item.next_run_date)}
+                            </Typography>
+                          </Box>
+                          <Typography
+                            fontWeight={900}
+                            color={
+                              item.transaction_type === "INCOME"
+                                ? "success.main"
+                                : "error.main"
+                            }
+                          >
+                            {formatCurrency(item.amount)}
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
+              </ChartCard>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3}>
+            <Grid item xs={12} lg={6}>
+              <ChartCard
+                title="Recent Transactions"
+                subtitle="Latest filtered income and expense records."
+              >
+                {recentTransactions.length === 0 ? (
+                  <Typography color="text.secondary">
+                    No recent transactions found.
+                  </Typography>
+                ) : (
+                  <Stack spacing={1.5}>
+                    {recentTransactions.map((item) => (
+                      <Box
+                        key={item.id}
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 3,
+                          backgroundColor: "action.hover",
+                        }}
+                      >
+                        <Stack direction="row" justifyContent="space-between">
+                          <Box>
+                            <Typography fontWeight={900}>
+                              {item.description || item.category}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {item.category} • {formatDate(item.date)}
+                            </Typography>
+                          </Box>
+                          <Typography
+                            fontWeight={900}
+                            color={
+                              item.type === "INCOME"
+                                ? "success.main"
+                                : "error.main"
+                            }
+                          >
+                            {item.type === "INCOME" ? "+" : "-"}
+                            {formatCurrency(item.amount)}
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
+              </ChartCard>
+            </Grid>
+
+            <Grid item xs={12} lg={6}>
+              <ChartCard
+                title="Smart Analytics Insights"
+                subtitle="System-generated insights from selected data."
+              >
+                {smartInsights.length === 0 ? (
+                  <Typography color="text.secondary">
+                    Add financial data to generate smart insights.
+                  </Typography>
+                ) : (
+                  <Stack spacing={1.5}>
+                    {smartInsights.map((insight) => (
+                      <Alert key={insight} severity="info">
+                        {insight}
+                      </Alert>
+                    ))}
+                  </Stack>
+                )}
+
+                <Box mt={3}>
+                  <Typography variant="h6" fontWeight={900}>
+                    Best / Worst Month
+                  </Typography>
+
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2} mt={1}>
+                    <Chip
+                      label={`Best: ${
+                        bestWorstMonths.bestMonth?.month || "-"
+                      } (${formatCurrency(bestWorstMonths.bestMonth?.balance || 0)})`}
+                      color="success"
+                      sx={{ fontWeight: 800 }}
+                    />
+
+                    <Chip
+                      label={`Worst: ${
+                        bestWorstMonths.worstMonth?.month || "-"
+                      } (${formatCurrency(bestWorstMonths.worstMonth?.balance || 0)})`}
+                      color="error"
+                      sx={{ fontWeight: 800 }}
+                    />
+                  </Stack>
+                </Box>
+              </ChartCard>
+            </Grid>
+          </Grid>
+        </>
+      )}
+    </Box>
+  );
+};
+
+export default AnalyticsPage;
   FormControl,
   Grid,
   InputLabel,
@@ -478,18 +1410,18 @@ import {
   Typography,
 } from "@mui/material";
 
+import RefreshIcon from "@mui/icons-material/Refresh";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import SavingsIcon from "@mui/icons-material/Savings";
-import HealthAndSafetyIcon from "@mui/icons-material/HealthAndSafety";
-import RefreshIcon from "@mui/icons-material/Refresh";
 import InsightsIcon from "@mui/icons-material/Insights";
-import RepeatIcon from "@mui/icons-material/Repeat";
 
 import {
   Area,
   Bar,
+  BarChart,
   CartesianGrid,
   Cell,
   ComposedChart,
@@ -504,7 +1436,7 @@ import {
 } from "recharts";
 
 import PageHeader from "../../components/common/PageHeader";
-import useDashboard from "../../hooks/useDashboard";
+import useAnalyticsPage from "../../hooks/useAnalyticsPage";
 
 const COLORS = [
   "#2563eb",
@@ -551,20 +1483,6 @@ const formatDate = (value) => {
   }).format(new Date(value));
 };
 
-const getHealthLabel = (score) => {
-  if (score >= 80) return "Excellent";
-  if (score >= 60) return "Good";
-  if (score >= 40) return "Average";
-  return "Needs Attention";
-};
-
-const getHealthColor = (score) => {
-  if (score >= 80) return "success";
-  if (score >= 60) return "primary";
-  if (score >= 40) return "warning";
-  return "error";
-};
-
 const KpiCard = ({ title, value, subtitle, icon, color }) => {
   return (
     <Card
@@ -573,8 +1491,6 @@ const KpiCard = ({ title, value, subtitle, icon, color }) => {
         height: "100%",
         border: "1px solid",
         borderColor: "divider",
-        background:
-          "linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01))",
       }}
     >
       <CardContent>
@@ -614,14 +1530,14 @@ const KpiCard = ({ title, value, subtitle, icon, color }) => {
   );
 };
 
-const DonutChartCard = ({ title, subtitle, data, emptyText }) => {
+const ChartCard = ({ title, subtitle, children }) => {
   return (
     <Card
       elevation={0}
       sx={{
+        height: "100%",
         border: "1px solid",
         borderColor: "divider",
-        height: "100%",
       }}
     >
       <CardContent>
@@ -629,600 +1545,90 @@ const DonutChartCard = ({ title, subtitle, data, emptyText }) => {
           {title}
         </Typography>
 
-        <Typography color="text.secondary" mb={2}>
-          {subtitle}
-        </Typography>
-
-        {data.length === 0 ? (
-          <Box
-            sx={{
-              height: 280,
-              border: "1px dashed",
-              borderColor: "divider",
-              borderRadius: 3,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              textAlign: "center",
-              px: 2,
-            }}
-          >
-            <Typography color="text.secondary">{emptyText}</Typography>
-          </Box>
-        ) : (
-          <ResponsiveContainer width="100%" height={280}>
-            <PieChart>
-              <Pie
-                data={data}
-                dataKey="amount"
-                nameKey="category"
-                innerRadius={55}
-                outerRadius={100}
-                paddingAngle={3}
-                label={({ category }) => category}
-              >
-                {data.map((entry, index) => (
-                  <Cell
-                    key={entry.category}
-                    fill={COLORS[index % COLORS.length]}
-                  />
-                ))}
-              </Pie>
-
-              <Tooltip formatter={(value) => formatCurrency(value)} />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
+        {subtitle && (
+          <Typography color="text.secondary" mb={2}>
+            {subtitle}
+          </Typography>
         )}
+
+        {children}
       </CardContent>
     </Card>
   );
 };
 
-const Dashboard = () => {
+const DonutChart = ({ data, emptyText }) => {
+  if (!data || data.length === 0) {
+    return (
+      <Box
+        sx={{
+          height: 310,
+          border: "1px dashed",
+          borderColor: "divider",
+          borderRadius: 3,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          px: 2,
+        }}
+      >
+        <Typography color="text.secondary">{emptyText}</Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height={310}>
+      <PieChart>
+        <Pie
+          data={data}
+          dataKey="amount"
+          nameKey="category"
+          innerRadius={60}
+          outerRadius={105}
+          paddingAngle={3}
+          label={({ category }) => category}
+        >
+          {data.map((entry, index) => (
+            <Cell key={entry.category} fill={COLORS[index % COLORS.length]} />
+          ))}
+        </Pie>
+
+        <Tooltip formatter={(value) => formatCurrency(value)} />
+        <Legend />
+      </PieChart>
+    </ResponsiveContainer>
+  );
+};
+
+const AnalyticsPage = () => {
   const {
-    year,
-    setYear,
-    month,
-    setMonth,
-    trend,
+    filters,
+    loading,
+    error,
+    fetchAnalytics,
+    totals,
     monthlyCashFlow,
     incomeDistribution,
     expenseDistribution,
-    budgetCategorySummary,
+    incomeRanking,
+    expenseRanking,
+    budgetVsActual,
+    savingsProgress,
+    recurringSummary,
     recentTransactions,
-    upcomingRecurring,
-    totals,
-    computedHealthScore,
-    loading,
-    error,
-    fetchDashboard,
-  } = useDashboard();
-
-  const expenseRatio =
-    totals.totalIncome > 0
-      ? ((totals.totalExpense / totals.totalIncome) * 100).toFixed(1)
-      : "0.0";
+    bestWorstMonths,
+    smartInsights,
+    backendExpensePie,
+    backendMonthlyBar,
+    backendYearlyBar,
+    backendDateRangeSummary,
+    backendTrend,
+  } = useAnalyticsPage();
 
   return (
     <Box>
       <PageHeader
-        title="Financial Intelligence Dashboard"
-        subtitle="Power BI-style view of income, expenses, savings, budgets, recurring transactions and financial health."
-        breadcrumbs={["Overview", "Dashboard"]}
-      />
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Card
-        elevation={0}
-        sx={{
-          mb: 3,
-          border: "1px solid",
-          borderColor: "divider",
-        }}
-      >
-        <CardContent>
-          <Stack
-            direction={{ xs: "column", md: "row" }}
-            spacing={2}
-            alignItems={{ xs: "stretch", md: "center" }}
-            justifyContent="space-between"
-          >
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField
-                label="Policy / Dashboard Year"
-                type="number"
-                size="small"
-                value={year}
-                onChange={(event) => setYear(event.target.value)}
-                sx={{ width: { xs: "100%", sm: 180 } }}
-              />
-
-              <FormControl size="small" sx={{ minWidth: 180 }}>
-                <InputLabel>Month Filter</InputLabel>
-                <Select
-                  label="Month Filter"
-                  value={month}
-                  onChange={(event) => setMonth(event.target.value)}
-                >
-                  {monthOptions.map((item) => (
-                    <MenuItem key={item.label} value={item.value}>
-                      {item.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Stack>
-
-            <Button
-              variant="contained"
-              startIcon={<RefreshIcon />}
-              onClick={fetchDashboard}
-            >
-              Refresh Intelligence
-            </Button>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      {loading ? (
-        <Box display="flex" justifyContent="center" py={10}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <>
-          <Grid container spacing={2.5} mb={3}>
-            <Grid item xs={12} sm={6} lg={2.4}>
-              <KpiCard
-                title="Income"
-                value={formatCurrency(totals.totalIncome)}
-                subtitle={`${year} selected period`}
-                icon={<TrendingUpIcon />}
-                color="linear-gradient(135deg, #16a34a, #22c55e)"
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6} lg={2.4}>
-              <KpiCard
-                title="Expense"
-                value={formatCurrency(totals.totalExpense)}
-                subtitle={`${expenseRatio}% of income`}
-                icon={<ReceiptLongIcon />}
-                color="linear-gradient(135deg, #dc2626, #ef4444)"
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6} lg={2.4}>
-              <KpiCard
-                title="Balance"
-                value={formatCurrency(totals.netBalance)}
-                subtitle={totals.netBalance >= 0 ? "Positive cash flow" : "Overspent"}
-                icon={<AccountBalanceWalletIcon />}
-                color="linear-gradient(135deg, #2563eb, #7c3aed)"
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6} lg={2.4}>
-              <KpiCard
-                title="Savings"
-                value={`${totals.savingsProgress.toFixed(1)}%`}
-                subtitle={`${formatCurrency(totals.currentSavings)} saved`}
-                icon={<SavingsIcon />}
-                color="linear-gradient(135deg, #059669, #10b981)"
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6} lg={2.4}>
-              <KpiCard
-                title="Health"
-                value={`${computedHealthScore}/100`}
-                subtitle={getHealthLabel(computedHealthScore)}
-                icon={<HealthAndSafetyIcon />}
-                color="linear-gradient(135deg, #0891b2, #2563eb)"
-              />
-            </Grid>
-          </Grid>
-
-          <Grid container spacing={3} mb={3}>
-            <Grid item xs={12} lg={8}>
-              <Card
-                elevation={0}
-                sx={{
-                  border: "1px solid",
-                  borderColor: "divider",
-                  minHeight: 470,
-                }}
-              >
-                <CardContent>
-                  <Stack direction="row" justifyContent="space-between" mb={2}>
-                    <Box>
-                      <Typography variant="h6" fontWeight={900}>
-                        Cash Flow Performance
-                      </Typography>
-                      <Typography color="text.secondary">
-                        Income, expense and net balance month-wise for {year}.
-                      </Typography>
-                    </Box>
-
-                    <Chip label={year} color="primary" sx={{ fontWeight: 800 }} />
-                  </Stack>
-
-                  <ResponsiveContainer width="100%" height={360}>
-                    <ComposedChart data={monthlyCashFlow}>
-                      <CartesianGrid strokeDasharray="3 3" opacity={0.35} />
-                      <XAxis dataKey="month" />
-                      <YAxis />
-                      <Tooltip formatter={(value) => formatCurrency(value)} />
-                      <Legend />
-
-                      <Bar
-                        dataKey="income"
-                        name="Income"
-                        fill="#16a34a"
-                        radius={[8, 8, 0, 0]}
-                        maxBarSize={34}
-                      />
-
-                      <Bar
-                        dataKey="expense"
-                        name="Expense"
-                        fill="#dc2626"
-                        radius={[8, 8, 0, 0]}
-                        maxBarSize={34}
-                      />
-
-                      <Area
-                        type="monotone"
-                        dataKey="balance"
-                        name="Balance Area"
-                        fill="#2563eb"
-                        stroke="none"
-                        fillOpacity={0.08}
-                      />
-
-                      <Line
-                        type="monotone"
-                        dataKey="balance"
-                        name="Net Balance"
-                        stroke="#2563eb"
-                        strokeWidth={3}
-                        dot={{ r: 4 }}
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} lg={4}>
-              <Stack spacing={3}>
-                <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-                  <CardContent>
-                    <Typography variant="h6" fontWeight={900}>
-                      Budget Utilization
-                    </Typography>
-
-                    <Typography variant="h3" fontWeight={900} mt={1}>
-                      {totals.budgetUtilization.toFixed(1)}%
-                    </Typography>
-
-                    <LinearProgress
-                      variant="determinate"
-                      value={Math.min(totals.budgetUtilization, 100)}
-                      color={
-                        totals.budgetUtilization >= 90
-                          ? "error"
-                          : totals.budgetUtilization >= 70
-                          ? "warning"
-                          : "success"
-                      }
-                      sx={{ height: 12, borderRadius: 10, mt: 2 }}
-                    />
-
-                    <Stack spacing={1.2} mt={2}>
-                      <Stack direction="row" justifyContent="space-between">
-                        <Typography color="text.secondary">Budget</Typography>
-                        <Typography fontWeight={900}>
-                          {formatCurrency(totals.totalBudget)}
-                        </Typography>
-                      </Stack>
-
-                      <Stack direction="row" justifyContent="space-between">
-                        <Typography color="text.secondary">Expense</Typography>
-                        <Typography fontWeight={900} color="error.main">
-                          {formatCurrency(totals.totalExpense)}
-                        </Typography>
-                      </Stack>
-
-                      <Stack direction="row" justifyContent="space-between">
-                        <Typography color="text.secondary">Remaining</Typography>
-                        <Typography
-                          fontWeight={900}
-                          color={
-                            totals.remainingBudget < 0
-                              ? "error.main"
-                              : "success.main"
-                          }
-                        >
-                          {formatCurrency(totals.remainingBudget)}
-                        </Typography>
-                      </Stack>
-                    </Stack>
-                  </CardContent>
-                </Card>
-
-                <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-                  <CardContent>
-                    <Typography variant="h6" fontWeight={900}>
-                      Financial Health
-                    </Typography>
-
-                    <Typography variant="h3" fontWeight={900} mt={1}>
-                      {computedHealthScore}
-                    </Typography>
-
-                    <Chip
-                      label={getHealthLabel(computedHealthScore)}
-                      color={getHealthColor(computedHealthScore)}
-                      sx={{ mt: 1, fontWeight: 800 }}
-                    />
-
-                    <LinearProgress
-                      variant="determinate"
-                      value={computedHealthScore}
-                      color={getHealthColor(computedHealthScore)}
-                      sx={{ height: 12, borderRadius: 10, mt: 2 }}
-                    />
-                  </CardContent>
-                </Card>
-              </Stack>
-            </Grid>
-          </Grid>
-
-          <Grid container spacing={3} mb={3}>
-            <Grid item xs={12} md={6}>
-              <DonutChartCard
-                title="Expense Distribution"
-                subtitle={`Category-wise expenses for selected period in ${year}.`}
-                data={expenseDistribution}
-                emptyText={`No expense data found for selected period in ${year}.`}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <DonutChartCard
-                title="Income Distribution"
-                subtitle={`Category-wise income for selected period in ${year}.`}
-                data={incomeDistribution}
-                emptyText={`No income data found for selected period in ${year}.`}
-              />
-            </Grid>
-          </Grid>
-
-          <Grid container spacing={3} mb={3}>
-            <Grid item xs={12} lg={6}>
-              <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-                <CardContent>
-                  <Typography variant="h6" fontWeight={900} mb={2}>
-                    Category Budget Matrix
-                  </Typography>
-
-                  {budgetCategorySummary.length === 0 ? (
-                    <Typography color="text.secondary">
-                      No budget summary available for selected period.
-                    </Typography>
-                  ) : (
-                    <Stack spacing={2}>
-                      {budgetCategorySummary.slice(0, 8).map((item) => (
-                        <Box key={`${item.category_id}-${item.month}`}>
-                          <Stack direction="row" justifyContent="space-between">
-                            <Typography fontWeight={800}>
-                              {item.category_name}
-                            </Typography>
-
-                            <Typography fontWeight={900}>
-                              {formatCurrency(item.expense)} /{" "}
-                              {formatCurrency(item.budget)}
-                            </Typography>
-                          </Stack>
-
-                          <LinearProgress
-                            variant="determinate"
-                            value={Math.min(item.utilization_percentage, 100)}
-                            color={
-                              item.utilization_percentage >= 90
-                                ? "error"
-                                : item.utilization_percentage >= 70
-                                ? "warning"
-                                : "success"
-                            }
-                            sx={{ height: 9, borderRadius: 10, mt: 1 }}
-                          />
-
-                          <Typography variant="caption" color="text.secondary">
-                            Remaining: {formatCurrency(item.remaining)} • Usage:{" "}
-                            {item.utilization_percentage}%
-                          </Typography>
-                        </Box>
-                      ))}
-                    </Stack>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} lg={6}>
-              <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-                <CardContent>
-                  <Typography variant="h6" fontWeight={900} mb={2}>
-                    Recent Transactions
-                  </Typography>
-
-                  {recentTransactions.length === 0 ? (
-                    <Typography color="text.secondary">
-                      No recent transactions found.
-                    </Typography>
-                  ) : (
-                    <Stack spacing={1.4}>
-                      {recentTransactions.map((item) => (
-                        <Box
-                          key={item.id}
-                          sx={{
-                            p: 1.5,
-                            borderRadius: 3,
-                            backgroundColor: "action.hover",
-                          }}
-                        >
-                          <Stack direction="row" justifyContent="space-between">
-                            <Box>
-                              <Typography fontWeight={900}>
-                                {item.description || item.category}
-                              </Typography>
-
-                              <Typography variant="body2" color="text.secondary">
-                                {item.category} • {formatDate(item.date)}
-                              </Typography>
-                            </Box>
-
-                            <Typography
-                              fontWeight={900}
-                              color={
-                                item.type === "INCOME"
-                                  ? "success.main"
-                                  : "error.main"
-                              }
-                            >
-                              {item.type === "INCOME" ? "+" : "-"}
-                              {formatCurrency(item.amount)}
-                            </Typography>
-                          </Stack>
-                        </Box>
-                      ))}
-                    </Stack>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-
-          <Grid container spacing={3}>
-            <Grid item xs={12} lg={6}>
-              <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-                <CardContent>
-                  <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                    <RepeatIcon color="secondary" />
-                    <Typography variant="h6" fontWeight={900}>
-                      Upcoming Recurring Transactions
-                    </Typography>
-                  </Stack>
-
-                  {upcomingRecurring.length === 0 ? (
-                    <Typography color="text.secondary">
-                      No upcoming recurring transactions.
-                    </Typography>
-                  ) : (
-                    <Stack spacing={1.4}>
-                      {upcomingRecurring.map((item) => (
-                        <Box
-                          key={item.recurring_id}
-                          sx={{
-                            p: 1.5,
-                            borderRadius: 3,
-                            backgroundColor: "action.hover",
-                          }}
-                        >
-                          <Stack direction="row" justifyContent="space-between">
-                            <Box>
-                              <Typography fontWeight={900}>
-                                {item.category_name}
-                              </Typography>
-
-                              <Typography variant="body2" color="text.secondary">
-                                {item.frequency} • {formatDate(item.next_run_date)} •{" "}
-                                {item.days_left} day(s) left
-                              </Typography>
-                            </Box>
-
-                            <Typography
-                              fontWeight={900}
-                              color={
-                                item.transaction_type === "INCOME"
-                                  ? "success.main"
-                                  : "error.main"
-                              }
-                            >
-                              {formatCurrency(item.amount)}
-                            </Typography>
-                          </Stack>
-                        </Box>
-                      ))}
-                    </Stack>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} lg={6}>
-              <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-                <CardContent>
-                  <Typography variant="h6" fontWeight={900} mb={2}>
-                    Smart Trend Insight
-                  </Typography>
-
-                  {!trend ? (
-                    <Typography color="text.secondary">
-                      Add income and expense records to view trend insights.
-                    </Typography>
-                  ) : (
-                    <Stack spacing={2}>
-                      <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-                        <Chip
-                          label={`Income: ${trend.income_trend || "STABLE"} (${
-                            trend.income_change_percent || 0
-                          }%)`}
-                          color={
-                            trend.income_trend === "INCREASING"
-                              ? "success"
-                              : trend.income_trend === "DECREASING"
-                              ? "warning"
-                              : "default"
-                          }
-                          sx={{ fontWeight: 800 }}
-                        />
-
-                        <Chip
-                          label={`Expense: ${trend.expense_trend || "STABLE"} (${
-                            trend.expense_change_percent || 0
-                          }%)`}
-                          color={
-                            trend.expense_trend === "INCREASING"
-                              ? "error"
-                              : trend.expense_trend === "DECREASING"
-                              ? "success"
-                              : "default"
-                          }
-                          sx={{ fontWeight: 800 }}
-                        />
-                      </Stack>
-
-                      <Alert severity="info">
-                        {trend.summary || "Trend summary not available."}
-                      </Alert>
-                    </Stack>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </>
-      )}
-    </Box>
-  );
-};
-
-export default Dashboard;
+        title="Financial Analytics"
+--------------------------------------------
