@@ -18,12 +18,14 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import DoneIcon from "@mui/icons-material/Done";
 import DeleteIcon from "@mui/icons-material/Delete";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import AddIcon from "@mui/icons-material/Add";
 import SaveIcon from "@mui/icons-material/Save";
+
 import PageHeader from "../../components/common/PageHeader";
 import useNotifications from "../../hooks/useNotifications";
 
@@ -130,43 +132,64 @@ const NotificationsPage = () => {
 
       <Grid container spacing={3} mb={3}>
         <Grid item xs={12} md={4}>
-          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+          <Card
+            elevation={0}
+            sx={{ border: "1px solid", borderColor: "divider" }}
+          >
             <CardContent>
               <Typography color="text.secondary" fontWeight={800}>
                 Total Notifications
               </Typography>
+
               <Typography variant="h4" fontWeight={900}>
                 {notifications.length}
               </Typography>
-              <Typography color="text.secondary">Stored in database</Typography>
+
+              <Typography color="text.secondary">
+                Stored in database
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
 
         <Grid item xs={12} md={4}>
-          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+          <Card
+            elevation={0}
+            sx={{ border: "1px solid", borderColor: "divider" }}
+          >
             <CardContent>
               <Typography color="text.secondary" fontWeight={800}>
                 Unread Notifications
               </Typography>
+
               <Typography variant="h4" fontWeight={900} color="error.main">
                 {unreadCount}
               </Typography>
-              <Typography color="text.secondary">Need user attention</Typography>
+
+              <Typography color="text.secondary">
+                Need user attention
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
 
         <Grid item xs={12} md={4}>
-          <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+          <Card
+            elevation={0}
+            sx={{ border: "1px solid", borderColor: "divider" }}
+          >
             <CardContent>
               <Typography color="text.secondary" fontWeight={800}>
                 Smart Finance Alerts
               </Typography>
+
               <Typography variant="h4" fontWeight={900} color="warning.main">
                 {smartAlerts.length}
               </Typography>
-              <Typography color="text.secondary">Generated from finance data</Typography>
+
+              <Typography color="text.secondary">
+                Generated from finance data
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -178,7 +201,7 @@ const NotificationsPage = () => {
         justifyContent="space-between"
         mb={3}
       >
-        <Stack direction="row" spacing={2}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
           <Button
             variant="outlined"
             startIcon={<RefreshIcon />}
@@ -209,7 +232,10 @@ const NotificationsPage = () => {
       ) : (
         <Grid container spacing={3}>
           <Grid item xs={12} lg={6}>
-            <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+            <Card
+              elevation={0}
+              sx={{ border: "1px solid", borderColor: "divider" }}
+            >
               <CardContent>
                 <Typography variant="h6" fontWeight={900} mb={2}>
                   Smart Finance Alerts
@@ -232,7 +258,11 @@ const NotificationsPage = () => {
                 ) : (
                   <Stack spacing={2}>
                     {smartAlerts.map((alert) => (
-                      {<Tooltip title="Save as database notification">
+                      <Alert
+                        key={`${alert.type}-${alert.message}`}
+                        severity={getAlertColor(alert.severity)}
+                        action={
+                          <Tooltip title="Save as database notification">
                             <IconButton
                               color="inherit"
                               size="small"
@@ -254,7 +284,10 @@ const NotificationsPage = () => {
           </Grid>
 
           <Grid item xs={12} lg={6}>
-            <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
+            <Card
+              elevation={0}
+              sx={{ border: "1px solid", borderColor: "divider" }}
+            >
               <CardContent>
                 <Typography variant="h6" fontWeight={900} mb={2}>
                   System Notifications
@@ -283,7 +316,9 @@ const NotificationsPage = () => {
                         sx={{
                           border: "1px solid",
                           borderColor:
-                            notification.is_read === "Y" ? "divider" : "primary.main",
+                            notification.is_read === "Y"
+                              ? "divider"
+                              : "primary.main",
                           backgroundColor:
                             notification.is_read === "Y"
                               ? "background.paper"
@@ -298,18 +333,28 @@ const NotificationsPage = () => {
                             spacing={2}
                           >
                             <Box>
-                              <Stack direction="row" spacing={1} alignItems="center">
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                                flexWrap="wrap"
+                              >
                                 <NotificationsActiveIcon color="primary" />
+
                                 <Typography fontWeight={900}>
                                   {notification.title}
                                 </Typography>
 
                                 <Chip
                                   label={
-                                    notification.is_read === "Y" ? "Read" : "Unread"
+                                    notification.is_read === "Y"
+                                      ? "Read"
+                                      : "Unread"
                                   }
                                   color={
-                                    notification.is_read === "Y" ? "default" : "primary"
+                                    notification.is_read === "Y"
+                                      ? "default"
+                                      : "primary"
                                   }
                                   size="small"
                                 />
@@ -349,7 +394,9 @@ const NotificationsPage = () => {
                                   color="error"
                                   disabled={deleting}
                                   onClick={() =>
-                                    removeNotification(notification.notification_id)
+                                    removeNotification(
+                                      notification.notification_id
+                                    )
                                   }
                                 >
                                   <DeleteIcon />
@@ -383,7 +430,10 @@ const NotificationsPage = () => {
               label="Title"
               value={formData.title}
               onChange={(event) =>
-                setFormData({ ...formData, title: event.target.value })
+                setFormData({
+                  ...formData,
+                  title: event.target.value,
+                })
               }
               fullWidth
               required
@@ -395,7 +445,10 @@ const NotificationsPage = () => {
               label="Message"
               value={formData.message}
               onChange={(event) =>
-                setFormData({ ...formData, message: event.target.value })
+                setFormData({
+                  ...formData,
+                  message: event.target.value,
+                })
               }
               fullWidth
               required
