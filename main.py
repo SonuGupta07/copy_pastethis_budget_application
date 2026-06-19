@@ -1,1030 +1,405 @@
-import api from "./axios";
+CREATE TABLE PAYMENTS (
+    PAYMENT_ID NUMBER PRIMARY KEY,
+    USER_ID NUMBER,
+    RAZORPAY_ORDER_ID VARCHAR2(100),
+    RAZORPAY_PAYMENT_ID VARCHAR2(100),
+    RAZORPAY_SIGNATURE VARCHAR2(300),
+    AMOUNT NUMBER(12,2),
+    CURRENCY VARCHAR2(10),
+    STATUS VARCHAR2(50),
+    PAYMENT_METHOD VARCHAR2(50),
+    CREATED_AT TIMESTAMP,
+    UPDATED_AT TIMESTAMP
+);
 
-export const categorizeExpense = async (data) => {
-  const response = await api.post("/ai/categorize-expense", data);
-  return response.data;
-};
+CREATE SEQUENCE PAYMENT_SEQ START WITH 1 INCREMENT BY 1;
 
-export const getBudgetAdvisor = async (userId) => {
-  const response = await api.post("/ai/budget-advisor", {
-    user_id: Number(userId),
-  });
+CREATE TABLE USER_PREMIUM_STATUS (
+    PREMIUM_ID NUMBER PRIMARY KEY,
+    USER_ID NUMBER,
+    IS_PREMIUM CHAR(1),
+    PLAN_NAME VARCHAR2(100),
+    START_DATE TIMESTAMP,
+    END_DATE TIMESTAMP,
+    CREATED_AT TIMESTAMP,
+    UPDATED_AT TIMESTAMP
+);
 
-  return response.data;
-};
+CREATE SEQUENCE PREMIUM_STATUS_SEQ START WITH 1 INCREMENT BY 1;
+-------------------------------
+from sqlalchemy import Column, Integer, Numeric, String, DateTime
 
-export const getSpendingInsights = async (userId) => {
-  const response = await api.get(`/ai/spending-insights/${userId}`);
-  return response.data;
-};
+from app.core.database import Base
 
-export const getSavingsRecommendation = async (userId) => {
-  const response = await api.get(`/ai/savings-recommendation/${userId}`);
-  return response.data;
-};
 
-export const askFinancialChatbot = async (userId, question) => {
-  const response = await api.post("/ai/financial-chatbot", {
-    user_id: Number(userId),
-    question,
-  });
+class Payment(Base):
+    __tablename__ = "PAYMENTS"
 
-  return response.data;
-};
+    payment_id = Column("PAYMENT_ID", Integer, primary_key=True)
+    user_id = Column("USER_ID", Integer, nullable=False)
+    razorpay_order_id = Column("RAZORPAY_ORDER_ID", String(100))
+    razorpay_payment_id = Column("RAZORPAY_PAYMENT_ID", String(100))
+    razorpay_signature = Column("RAZORPAY_SIGNATURE", String(300))
+    amount = Column("AMOUNT", Numeric(12, 2))
+    currency = Column("CURRENCY", String(10))
+    status = Column("STATUS", String(50))
+    payment_method = Column("PAYMENT_METHOD", String(50))
+    created_at = Column("CREATED_AT", DateTime)
+    updated_at = Column("UPDATED_AT", DateTime)
+    -----------------------------------------------
+    from sqlalchemy import Column, Integer, String, DateTime
 
-export const getAllCategories = async () => {
-  const response = await api.get("/categories/");
-  return response.data;
-};
+from app.core.database import Base
 
-export const getAllIncome = async () => {
-  const response = await api.get("/income/");
-  return response.data;
-};
 
-export const getAllExpenses = async () => {
-  const response = await api.get("/expense/");
-  return response.data;
-};
+class UserPremiumStatus(Base):
+    __tablename__ = "USER_PREMIUM_STATUS"
 
-export const getAllBudgets = async () => {
-  const response = await api.get("/budget/");
-  return response.data;
-};
+    premium_id = Column("PREMIUM_ID", Integer, primary_key=True)
+    user_id = Column("USER_ID", Integer, nullable=False)
+    is_premium = Column("IS_PREMIUM", String(1))
+    plan_name = Column("PLAN_NAME", String(100))
+    start_date = Column("START_DATE", DateTime)
+    end_date = Column("END_DATE", DateTime)
+    created_at = Column("CREATED_AT", DateTime)
+    updated_at = Column("UPDATED_AT", DateTime)
+    -------------------------------
+    from pydantic import BaseModel
 
-export const getAllSavingsGoals = async () => {
-  const response = await api.get("/savings/");
-  return response.data;
-};
 
-export const getAllRecurringTransactions = async () => {
-  const response = await api.get("/recurring/");
-  return response.data;
-};
-------------------------------------
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  askFinancialChatbot,
-  categorizeExpense,
-  getAllBudgets,
-  getAllCategories,
-  getAllExpenses,
-  getAllIncome,
-  getAllRecurringTransactions,
-  getAllSavingsGoals,
-  getBudgetAdvisor,
-  getSavingsRecommendation,
-  getSpendingInsights,
-} from "../api/aiAssistantApi";
-import { getUserIdFromToken } from "../utils/jwt";
+class CreateOrderRequest(BaseModel):
+    user_id: int
+    plan_code: str = "PREMIUM_MONTHLY"
 
-const normalizeArray = (data) => {
-  if (Array.isArray(data)) return data;
-  if (!data) return [];
-  return [data];
-};
 
-const buildCategoryMap = (categories) => {
-  const map = {};
+class VerifyPaymentRequest(BaseModel):
+    user_id: int
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+    -----------------------------
+    from datetime import datetime
 
-  categories.forEach((category) => {
-    map[Number(category.category_id)] = category.category_name;
-  });
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-  return map;
-};
+from app.models.payment import Payment
+from app.models.user_premium_status import UserPremiumStatus
 
-const getDaysRemaining = (dateValue) => {
-  if (!dateValue) return null;
 
-  const today = new Date();
-  const target = new Date(dateValue);
+class PaymentRepository:
 
-  today.setHours(0, 0, 0, 0);
-  target.setHours(0, 0, 0, 0);
+    @staticmethod
+    def get_payment_next_id(db: Session):
+        result = db.execute(text("SELECT PAYMENT_SEQ.NEXTVAL FROM DUAL"))
+        return result.scalar()
 
-  return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-};
+    @staticmethod
+    def get_premium_next_id(db: Session):
+        result = db.execute(text("SELECT PREMIUM_STATUS_SEQ.NEXTVAL FROM DUAL"))
+        return result.scalar()
 
-const detectAnomalies = ({ expenses, categoryMap }) => {
-  const anomalies = [];
+    @staticmethod
+    def create_payment(db: Session, payment: Payment):
+        db.add(payment)
+        db.commit()
+        db.refresh(payment)
+        return payment
 
-  const expenseAmounts = expenses.map((expense) => Number(expense.amount || 0));
+    @staticmethod
+    def get_payment_by_order_id(db: Session, order_id: str):
+        return (
+            db.query(Payment)
+            .filter(Payment.razorpay_order_id == order_id)
+            .first()
+        )
 
-  const averageExpense =
-    expenseAmounts.length > 0
-      ? expenseAmounts.reduce((sum, amount) => sum + amount, 0) /
-        expenseAmounts.length
-      : 0;
+    @staticmethod
+    def update_payment(db: Session, payment: Payment):
+        payment.updated_at = datetime.now()
+        db.commit()
+        db.refresh(payment)
+        return payment
 
-  expenses.forEach((expense) => {
-    const amount = Number(expense.amount || 0);
+    @staticmethod
+    def get_premium_by_user(db: Session, user_id: int):
+        return (
+            db.query(UserPremiumStatus)
+            .filter(UserPremiumStatus.user_id == user_id)
+            .first()
+        )
 
-    if (averageExpense > 0 && amount >= averageExpense * 2) {
-      anomalies.push({
-        title: "Unusual High Expense",
-        message: `${expense.description || "Expense"} is much higher than your average expense.`,
-        amount,
-        category:
-          categoryMap[Number(expense.category_id)] || "Unknown Category",
-        date: expense.expense_date,
-      });
+    @staticmethod
+    def create_premium_status(db: Session, user_id: int, plan_name: str, start_date, end_date):
+        premium = UserPremiumStatus(
+            premium_id=PaymentRepository.get_premium_next_id(db),
+            user_id=user_id,
+            is_premium="Y",
+            plan_name=plan_name,
+            start_date=start_date,
+            end_date=end_date,
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+
+        db.add(premium)
+        db.commit()
+        db.refresh(premium)
+        return premium
+
+    @staticmethod
+    def update_premium_status(db: Session, premium: UserPremiumStatus, plan_name: str, start_date, end_date):
+        premium.is_premium = "Y"
+        premium.plan_name = plan_name
+        premium.start_date = start_date
+        premium.end_date = end_date
+        premium.updated_at = datetime.now()
+
+        db.commit()
+        db.refresh(premium)
+        return premium
+        ---------------------------
+        import hashlib
+import hmac
+from datetime import datetime, timedelta
+
+import requests
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.models.payment import Payment
+from app.repositories.payment_repository import PaymentRepository
+from app.repositories.user_repository import UserRepository
+
+
+PLANS = {
+    "PREMIUM_MONTHLY": {
+        "plan_name": "Premium Member",
+        "amount_rupees": 99,
+        "validity_days": 30
     }
-  });
-
-  return anomalies.slice(0, 5);
-};
-
-const useAiAssistant = () => {
-  const userId = useMemo(() => getUserIdFromToken(), []);
-
-  const [categories, setCategories] = useState([]);
-  const [incomeList, setIncomeList] = useState([]);
-  const [expenseList, setExpenseList] = useState([]);
-  const [budgetList, setBudgetList] = useState([]);
-  const [savingsGoals, setSavingsGoals] = useState([]);
-  const [recurringList, setRecurringList] = useState([]);
-
-  const [spendingInsights, setSpendingInsights] = useState(null);
-  const [savingsRecommendation, setSavingsRecommendation] = useState(null);
-  const [budgetAdvisor, setBudgetAdvisor] = useState(null);
-  const [expensePrediction, setExpensePrediction] = useState(null);
-
-  const [chatMessages, setChatMessages] = useState([
-    {
-      role: "assistant",
-      text: "Hi! I can help you understand your spending, budgets, savings goals and financial health. Ask me anything about your finances.",
-    },
-  ]);
-
-  const [loading, setLoading] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [chatLoading, setChatLoading] = useState(false);
-  const [categorizing, setCategorizing] = useState(false);
-  const [error, setError] = useState("");
-
-  const fetchAiData = useCallback(async () => {
-    if (!userId) {
-      setError("User ID not found in token. Please login again.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-
-    try {
-      const results = await Promise.allSettled([
-        getAllCategories(),
-        getAllIncome(),
-        getAllExpenses(),
-        getAllBudgets(),
-        getAllSavingsGoals(),
-        getAllRecurringTransactions(),
-        getSpendingInsights(userId),
-        getSavingsRecommendation(userId),
-      ]);
-
-      const allCategories =
-        results[0].status === "fulfilled" ? normalizeArray(results[0].value) : [];
-
-      const allIncome =
-        results[1].status === "fulfilled" ? normalizeArray(results[1].value) : [];
-
-      const allExpenses =
-        results[2].status === "fulfilled" ? normalizeArray(results[2].value) : [];
-
-      const allBudgets =
-        results[3].status === "fulfilled" ? normalizeArray(results[3].value) : [];
-
-      const allSavings =
-        results[4].status === "fulfilled" ? normalizeArray(results[4].value) : [];
-
-      const allRecurring =
-        results[5].status === "fulfilled" ? normalizeArray(results[5].value) : [];
-
-      setCategories(allCategories);
-
-      setIncomeList(
-        allIncome.filter((item) => Number(item.user_id) === Number(userId))
-      );
-
-      setExpenseList(
-        allExpenses.filter((item) => Number(item.user_id) === Number(userId))
-      );
-
-      setBudgetList(
-        allBudgets.filter((item) => Number(item.user_id) === Number(userId))
-      );
-
-      setSavingsGoals(
-        allSavings.filter((item) => Number(item.user_id) === Number(userId))
-      );
-
-      setRecurringList(
-        allRecurring.filter((item) => Number(item.user_id) === Number(userId))
-      );
-
-      if (results[6].status === "fulfilled") {
-        setSpendingInsights(results[6].value);
-      }
-
-      if (results[7].status === "fulfilled") {
-        setSavingsRecommendation(results[7].value);
-      }
-    } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-          err.response?.data?.message ||
-          "Failed to load AI assistant data"
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    fetchAiData();
-  }, [fetchAiData]);
-
-  const categoryMap = useMemo(() => {
-    return buildCategoryMap(categories);
-  }, [categories]);
-
-  const financialSummary = useMemo(() => {
-    const totalIncome = incomeList.reduce(
-      (sum, item) => sum + Number(item.amount || 0),
-      0
-    );
-
-    const totalExpense = expenseList.reduce(
-      (sum, item) => sum + Number(item.amount || 0),
-      0
-    );
-
-    const totalBudget = budgetList.reduce(
-      (sum, item) => sum + Number(item.budget_amount || 0),
-      0
-    );
-
-    const savingsTarget = savingsGoals.reduce(
-      (sum, item) => sum + Number(item.target_amount || 0),
-      0
-    );
-
-    const currentSavings = savingsGoals.reduce(
-      (sum, item) => sum + Number(item.current_amount || 0),
-      0
-    );
-
-    const expenseRatio =
-      totalIncome > 0 ? Number(((totalExpense / totalIncome) * 100).toFixed(2)) : 0;
-
-    const savingsProgress =
-      savingsTarget > 0
-        ? Number(((currentSavings / savingsTarget) * 100).toFixed(2))
-        : 0;
-
-    const budgetUsage =
-      totalBudget > 0
-        ? Number(((totalExpense / totalBudget) * 100).toFixed(2))
-        : 0;
-
-    return {
-      totalIncome,
-      totalExpense,
-      netBalance: totalIncome - totalExpense,
-      totalBudget,
-      savingsTarget,
-      currentSavings,
-      expenseRatio,
-      savingsProgress,
-      budgetUsage,
-    };
-  }, [incomeList, expenseList, budgetList, savingsGoals]);
-
-  const recentExpenses = useMemo(() => {
-    return [...expenseList]
-      .sort((a, b) => new Date(b.expense_date) - new Date(a.expense_date))
-      .slice(0, 8)
-      .map((expense) => ({
-        ...expense,
-        category_name:
-          categoryMap[Number(expense.category_id)] || "Unknown Category",
-      }));
-  }, [expenseList, categoryMap]);
-
-  const anomalies = useMemo(() => {
-    return detectAnomalies({
-      expenses: expenseList,
-      categoryMap,
-    });
-  }, [expenseList, categoryMap]);
-
-  const upcomingRecurring = useMemo(() => {
-    return recurringList
-      .map((item) => ({
-        ...item,
-        category_name: categoryMap[Number(item.category_id)] || "Unknown",
-        days_remaining: getDaysRemaining(item.next_run_date),
-      }))
-      .filter((item) => item.days_remaining !== null && item.days_remaining >= 0)
-      .sort((a, b) => a.days_remaining - b.days_remaining)
-      .slice(0, 5);
-  }, [recurringList, categoryMap]);
-
-  const generateBudgetAdvisor = async () => {
-    if (!userId) return;
-
-    setAiLoading(true);
-    setError("");
-
-    try {
-      const data = await getBudgetAdvisor(userId);
-      setBudgetAdvisor(data);
-    } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-          err.response?.data?.message ||
-          "Failed to generate budget advisor"
-      );
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  const askQuestion = async (question) => {
-    if (!question.trim()) return;
-
-    setChatMessages((previous) => [
-      ...previous,
-      {
-        role: "user",
-        text: question,
-      },
-    ]);
-
-    setChatLoading(true);
-    setError("");
-
-    try {
-      const data = await askFinancialChatbot(userId, question);
-
-      setChatMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          text: data.answer || data.response || "I could not generate an answer.",
-        },
-      ]);
-    } catch (err) {
-      const message =
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        "AI assistant could not answer right now.";
-
-      setChatMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          text: message,
-        },
-      ]);
-    } finally {
-      setChatLoading(false);
-    }
-  };
-
-  const runExpenseCategorization = async (expense) => {
-    setCategorizing(true);
-    setError("");
-
-    try {
-      const data = await categorizeExpense({
-        expense_id: Number(expense.expense_id),
-        description: expense.description || "",
-      });
-
-      setExpensePrediction(data);
-    } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-          err.response?.data?.message ||
-          "Failed to categorize expense"
-      );
-    } finally {
-      setCategorizing(false);
-    }
-  };
-
-  return {
-    userId,
-    loading,
-    aiLoading,
-    chatLoading,
-    categorizing,
-    error,
-    fetchAiData,
-    financialSummary,
-    spendingInsights,
-    savingsRecommendation,
-    budgetAdvisor,
-    expensePrediction,
-    recentExpenses,
-    anomalies,
-    upcomingRecurring,
-    chatMessages,
-    askQuestion,
-    generateBudgetAdvisor,
-    runExpenseCategorization,
-  };
-};
-
-export default useAiAssistant;
-------------------------------------------
-import { useState } from "react";
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  CircularProgress,
-  Grid,
-  IconButton,
-  InputAdornment,
-  Stack,
-  TextField,
-  Typography,
-} from "@mui/material";
-
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import SendIcon from "@mui/icons-material/Send";
-import RefreshIcon from "@mui/icons-material/Refresh";
-import PsychologyIcon from "@mui/icons-material/Psychology";
-import TrendingUpIcon from "@mui/icons-material/TrendingUp";
-import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
-import SavingsIcon from "@mui/icons-material/Savings";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
-import CategoryIcon from "@mui/icons-material/Category";
-import RepeatIcon from "@mui/icons-material/Repeat";
-
-import PageHeader from "../../components/common/PageHeader";
-import useAiAssistant from "../../hooks/useAiAssistant";
-
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0));
-};
-
-const formatDate = (value) => {
-  if (!value) return "-";
-
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
-};
-
-const SummaryCard = ({ title, value, subtitle, icon, color }) => {
-  return (
-    <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-      <CardContent>
-        <Stack direction="row" spacing={2} justifyContent="space-between">
-          <Box>
-            <Typography color="text.secondary" fontWeight={800}>
-              {title}
-            </Typography>
-
-            <Typography variant="h5" fontWeight={900} mt={1}>
-              {value}
-            </Typography>
-
-            <Typography variant="body2" color="text.secondary" mt={0.5}>
-              {subtitle}
-            </Typography>
-          </Box>
-
-          <Box
-            sx={{
-              width: 52,
-              height: 52,
-              borderRadius: 3,
-              color: "white",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: color,
-              flexShrink: 0,
-            }}
-          >
-            {icon}
-          </Box>
-        </Stack>
-      </CardContent>
-    </Card>
-  );
-};
-
-const AiAssistantPage = () => {
-  const {
-    loading,
-    aiLoading,
-    chatLoading,
-    categorizing,
-    error,
-    fetchAiData,
-    financialSummary,
-    spendingInsights,
-    savingsRecommendation,
-    budgetAdvisor,
-    expensePrediction,
-    recentExpenses,
-    anomalies,
-    upcomingRecurring,
-    chatMessages,
-    askQuestion,
-    generateBudgetAdvisor,
-    runExpenseCategorization,
-  } = useAiAssistant();
-
-  const [question, setQuestion] = useState("");
-
-  const quickPrompts = [
-    "How is my spending this month?",
-    "Where am I spending the most?",
-    "How can I improve my savings?",
-    "Am I overspending compared to my income?",
-    "Give me practical budget advice.",
-  ];
-
-  const handleSend = async () => {
-    if (!question.trim()) return;
-
-    const currentQuestion = question;
-    setQuestion("");
-    await askQuestion(currentQuestion);
-  };
-
-  return (
-    <Box>
-      <PageHeader
-        title="AI Financial Assistant"
-        subtitle="GenAI-powered budget advisor, spending insights, savings recommendations and financial chatbot."
-        breadcrumbs={["Insights", "AI Assistant"]}
-      />
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
-
-      {loading ? (
-        <Box display="flex" justifyContent="center" py={10}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <>
-          <Stack direction="row" justifyContent="flex-end" mb={3}>
-            <Button
-              variant="outlined"
-              startIcon={<RefreshIcon />}
-              onClick={fetchAiData}
-            >
-              Refresh AI Context
-            </Button>
-          </Stack>
-
-          <Grid container spacing={2.5} mb={3}>
-            <Grid item xs={12} sm={6} lg={3}>
-              <SummaryCard
-                title="Income"
-                value={formatCurrency(financialSummary.totalIncome)}
-                subtitle="User-specific total income"
-                icon={<TrendingUpIcon />}
-                color="linear-gradient(135deg, #16a34a, #22c55e)"
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6} lg={3}>
-              <SummaryCard
-                title="Expense"
-                value={formatCurrency(financialSummary.totalExpense)}
-                subtitle={`${financialSummary.expenseRatio}% of income`}
-                icon={<ReceiptLongIcon />}
-                color="linear-gradient(135deg, #dc2626, #ef4444)"
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6} lg={3}>
-              <SummaryCard
-                title="Savings"
-                value={`${financialSummary.savingsProgress}%`}
-                subtitle={`${formatCurrency(financialSummary.currentSavings)} saved`}
-                icon={<SavingsIcon />}
-                color="linear-gradient(135deg, #059669, #10b981)"
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6} lg={3}>
-              <SummaryCard
-                title="Budget Usage"
-                value={`${financialSummary.budgetUsage}%`}
-                subtitle={`${formatCurrency(financialSummary.totalBudget)} planned`}
-                icon={<PsychologyIcon />}
-                color="linear-gradient(135deg, #2563eb, #7c3aed)"
-              />
-            </Grid>
-          </Grid>
-
-          <Grid container spacing={3}>
-            <Grid item xs={12} lg={7}>
-              <Card
-                elevation={0}
-                sx={{ border: "1px solid", borderColor: "divider", height: "100%" }}
-              >
-                <CardContent>
-                  <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                    <AutoAwesomeIcon color="primary" />
-                    <Typography variant="h6" fontWeight={900}>
-                      Financial Chatbot
-                    </Typography>
-                  </Stack>
-
-                  <Box
-                    sx={{
-                      height: 420,
-                      overflowY: "auto",
-                      border: "1px solid",
-                      borderColor: "divider",
-                      borderRadius: 3,
-                      p: 2,
-                      mb: 2,
-                      backgroundColor: "background.default",
-                    }}
-                  >
-                    <Stack spacing={2}>
-                      {chatMessages.map((message, index) => (
-                        <Box
-                          key={`${message.role}-${index}`}
-                          sx={{
-                            display: "flex",
-                            justifyContent:
-                              message.role === "user" ? "flex-end" : "flex-start",
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              maxWidth: "80%",
-                              p: 1.6,
-                              borderRadius: 3,
-                              backgroundColor:
-                                message.role === "user"
-                                  ? "primary.main"
-                                  : "action.hover",
-                              color:
-                                message.role === "user"
-                                  ? "primary.contrastText"
-                                  : "text.primary",
-                            }}
-                          >
-                            <Typography variant="body2" whiteSpace="pre-line">
-                              {message.text}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      ))}
-
-                      {chatLoading && (
-                        <Typography color="text.secondary">
-                          AI is thinking...
-                        </Typography>
-                      )}
-                    </Stack>
-                  </Box>
-
-                  <Stack direction="row" spacing={1} flexWrap="wrap" mb={2}>
-                    {quickPrompts.map((prompt) => (
-                      <Chip
-                        key={prompt}
-                        label={prompt}
-                        clickable
-                        color="primary"
-                        variant="outlined"
-                        onClick={() => setQuestion(prompt)}
-                        sx={{ mb: 1 }}
-                      />
-                    ))}
-                  </Stack>
-
-                  <TextField
-                    fullWidth
-                    placeholder="Ask about your spending, budget, savings or financial health..."
-                    value={question}
-                    onChange={(event) => setQuestion(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton
-                            color="primary"
-                            disabled={chatLoading || !question.trim()}
-                            onClick={handleSend}
-                          >
-                            <SendIcon />
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} lg={5}>
-              <Stack spacing={3}>
-                <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-                  <CardContent>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Box>
-                        <Typography variant="h6" fontWeight={900}>
-                          AI Budget Advisor
-                        </Typography>
-                        <Typography color="text.secondary">
-                          Generate personalized budget recommendations.
-                        </Typography>
-                      </Box>
-
-                      <Button
-                        variant="contained"
-                        disabled={aiLoading}
-                        onClick={generateBudgetAdvisor}
-                      >
-                        {aiLoading ? "Generating..." : "Generate"}
-                      </Button>
-                    </Stack>
-
-                    {budgetAdvisor && (
-                      <Alert severity="info" sx={{ mt: 2, whiteSpace: "pre-line" }}>
-                        {budgetAdvisor.recommendation}
-                      </Alert>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-                  <CardContent>
-                    <Typography variant="h6" fontWeight={900} mb={2}>
-                      AI Spending Insights
-                    </Typography>
-
-                    {!spendingInsights ? (
-                      <Typography color="text.secondary">
-                        Spending insights will appear after AI response loads.
-                      </Typography>
-                    ) : (
-                      <Stack spacing={1.5}>
-                        <Stack direction="row" justifyContent="space-between">
-                          <Typography color="text.secondary">
-                            Highest Category
-                          </Typography>
-                          <Typography fontWeight={900}>
-                            {spendingInsights.highest_spending_category || "-"}
-                          </Typography>
-                        </Stack>
-
-                        <Stack direction="row" justifyContent="space-between">
-                          <Typography color="text.secondary">
-                            Highest Amount
-                          </Typography>
-                          <Typography fontWeight={900} color="error.main">
-                            {formatCurrency(
-                              spendingInsights.highest_spending_amount
-                            )}
-                          </Typography>
-                        </Stack>
-
-                        <Stack direction="row" justifyContent="space-between">
-                          <Typography color="text.secondary">
-                            Savings Rate
-                          </Typography>
-                          <Typography fontWeight={900}>
-                            {spendingInsights.savings_rate || 0}%
-                          </Typography>
-                        </Stack>
-
-                        <Alert severity="info" sx={{ whiteSpace: "pre-line" }}>
-                          {spendingInsights.insights}
-                        </Alert>
-                      </Stack>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-                  <CardContent>
-                    <Typography variant="h6" fontWeight={900} mb={2}>
-                      AI Savings Recommendation
-                    </Typography>
-
-                    {!savingsRecommendation ? (
-                      <Typography color="text.secondary">
-                        No savings recommendation available.
-                      </Typography>
-                    ) : savingsRecommendation.message ? (
-                      <Typography color="text.secondary">
-                        {savingsRecommendation.message}
-                      </Typography>
-                    ) : (
-                      <Stack spacing={1.5}>
-                        <Typography fontWeight={900}>
-                          {savingsRecommendation.goal_name}
-                        </Typography>
-
-                        <Typography color="text.secondary">
-                          {formatCurrency(savingsRecommendation.current_amount)} saved of{" "}
-                          {formatCurrency(savingsRecommendation.target_amount)}
-                        </Typography>
-
-                        <Alert severity="success" sx={{ whiteSpace: "pre-line" }}>
-                          {savingsRecommendation.recommendation}
-                        </Alert>
-                      </Stack>
-                    )}
-                  </CardContent>
-                </Card>
-              </Stack>
-            </Grid>
-
-            <Grid item xs={12} lg={6}>
-              <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-                <CardContent>
-                  <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                    <CategoryIcon color="primary" />
-                    <Typography variant="h6" fontWeight={900}>
-                      AI Expense Categorization
-                    </Typography>
-                  </Stack>
-
-                  {recentExpenses.length === 0 ? (
-                    <Typography color="text.secondary">
-                      No expenses found for categorization.
-                    </Typography>
-                  ) : (
-                    <Stack spacing={1.5}>
-                      {recentExpenses.map((expense) => (
-                        <Box
-                          key={expense.expense_id}
-                          sx={{
-                            p: 1.5,
-                            borderRadius: 3,
-                            backgroundColor: "action.hover",
-                          }}
-                        >
-                          <Stack direction="row" justifyContent="space-between" spacing={2}>
-                            <Box>
-                              <Typography fontWeight={900}>
-                                {expense.description || "Expense"}
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {expense.category_name} • {formatDate(expense.expense_date)}
-                              </Typography>
-                            </Box>
-
-                            <Stack alignItems="flex-end" spacing={1}>
-                              <Typography fontWeight={900} color="error.main">
-                                {formatCurrency(expense.amount)}
-                              </Typography>
-
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                disabled={categorizing}
-                                onClick={() => runExpenseCategorization(expense)}
-                              >
-                                Predict
-                              </Button>
-                            </Stack>
-                          </Stack>
-                        </Box>
-                      ))}
-                    </Stack>
-                  )}
-
-                  {expensePrediction && (
-                    <Alert severity="success" sx={{ mt: 2 }}>
-                      Expense #{expensePrediction.expense_id} predicted as{" "}
-                      <strong>{expensePrediction.category}</strong> with{" "}
-                      {expensePrediction.confidence}% confidence.
-                    </Alert>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} lg={6}>
-              <Stack spacing={3}>
-                <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-                  <CardContent>
-                    <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                      <WarningAmberIcon color="warning" />
-                      <Typography variant="h6" fontWeight={900}>
-                        AI Anomaly Detection
-                      </Typography>
-                    </Stack>
-
-                    {anomalies.length === 0 ? (
-                      <Typography color="text.secondary">
-                        No unusual expenses detected.
-                      </Typography>
-                    ) : (
-                      <Stack spacing={1.5}>
-                        {anomalies.map((item) => (
-                          <Alert
-                            key={`${item.title}-${item.amount}-${item.date}`}
-                            severity="warning"
-                          >
-                            <Typography fontWeight={900}>{item.title}</Typography>
-                            <Typography variant="body2">
-                              {item.message} Amount: {formatCurrency(item.amount)} •{" "}
-                              Category: {item.category}
-                            </Typography>
-                          </Alert>
-                        ))}
-                      </Stack>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card elevation={0} sx={{ border: "1px solid", borderColor: "divider" }}>
-                  <CardContent>
-                    <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                      <RepeatIcon color="secondary" />
-                      <Typography variant="h6" fontWeight={900}>
-                        Upcoming Recurring Context
-                      </Typography>
-                    </Stack>
-
-                    {upcomingRecurring.length === 0 ? (
-                      <Typography color="text.secondary">
-                        No upcoming recurring transactions.
-                      </Typography>
-                    ) : (
-                      <Stack spacing={1.5}>
-                        {upcomingRecurring.map((item) => (
-                          <Box
-                            key={item.recurring_id}
-                            sx={{
-                              p: 1.5,
-                              borderRadius: 3,
-                              backgroundColor: "action.hover",
-                            }}
-                          >
-                            <Stack direction="row" justifyContent="space-between">
-                              <Box>
-                                <Typography fontWeight={900}>
-                                  {item.category_name}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                  {item.frequency} • {item.days_remaining} day(s) left
-                                </Typography>
-                              </Box>
-
-                              <Typography
-                                fontWeight={900}
-                                color={
-                                  item.transaction_type === "INCOME"
-                                    ? "success.main"
-                                    : "error.main"
-                                }
-                              >
-                                {formatCurrency(item.amount)}
-                              </Typography>
-                            </Stack>
-                          </Box>
-                        ))}
-                      </Stack>
-                    )}
-                  </CardContent>
-                </Card>
-              </Stack>
-            </Grid>
-          </Grid>
-        </>
-      )}
-    </Box>
-  );
-};
-
-export default AiAssistantPage;
-----------------------------------------------
+}
+
+
+class PaymentService:
+
+    @staticmethod
+    def create_order(db: Session, user_id: int, plan_code: str):
+        user = UserRepository.get_by_id(db, user_id)
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if plan_code not in PLANS:
+            raise HTTPException(status_code=400, detail="Invalid plan selected")
+
+        plan = PLANS[plan_code]
+        amount_paise = int(plan["amount_rupees"] * 100)
+
+        payload = {
+            "amount": amount_paise,
+            "currency": "INR",
+            "receipt": f"premium_{user_id}_{int(datetime.now().timestamp())}",
+            "notes": {
+                "user_id": str(user_id),
+                "plan_code": plan_code
+            }
+        }
+
+        response = requests.post(
+            "https://api.razorpay.com/v1/orders",
+            auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET),
+            json=payload,
+            timeout=20
+        )
+
+        if response.status_code not in [200, 201]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Razorpay order creation failed: {response.text}"
+            )
+
+        order_data = response.json()
+
+        payment = Payment(
+            payment_id=PaymentRepository.get_payment_next_id(db),
+            user_id=user_id,
+            razorpay_order_id=order_data["id"],
+            amount=plan["amount_rupees"],
+            currency="INR",
+            status="CREATED",
+            payment_method="RAZORPAY",
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+
+        PaymentRepository.create_payment(db, payment)
+
+        return {
+            "key_id": settings.RAZORPAY_KEY_ID,
+            "order_id": order_data["id"],
+            "amount": amount_paise,
+            "currency": "INR",
+            "plan_code": plan_code,
+            "plan_name": plan["plan_name"],
+            "description": "BudgetPro Premium Membership"
+        }
+
+    @staticmethod
+    def verify_payment(
+        db: Session,
+        user_id: int,
+        razorpay_order_id: str,
+        razorpay_payment_id: str,
+        razorpay_signature: str
+    ):
+        payment = PaymentRepository.get_payment_by_order_id(db, razorpay_order_id)
+
+        if not payment:
+            raise HTTPException(status_code=404, detail="Payment order not found")
+
+        if int(payment.user_id) != int(user_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Payment does not belong to this user"
+            )
+
+        generated_signature = hmac.new(
+            settings.RAZORPAY_KEY_SECRET.encode(),
+            f"{razorpay_order_id}|{razorpay_payment_id}".encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        if generated_signature != razorpay_signature:
+            payment.status = "FAILED"
+            payment.razorpay_payment_id = razorpay_payment_id
+            payment.razorpay_signature = razorpay_signature
+            PaymentRepository.update_payment(db, payment)
+
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Razorpay payment signature"
+            )
+
+        payment.status = "PAID"
+        payment.razorpay_payment_id = razorpay_payment_id
+        payment.razorpay_signature = razorpay_signature
+        PaymentRepository.update_payment(db, payment)
+
+        start_date = datetime.now()
+        end_date = start_date + timedelta(days=30)
+
+        existing_premium = PaymentRepository.get_premium_by_user(db, user_id)
+
+        if existing_premium:
+            premium = PaymentRepository.update_premium_status(
+                db,
+                existing_premium,
+                "Premium Member",
+                start_date,
+                end_date
+            )
+        else:
+            premium = PaymentRepository.create_premium_status(
+                db,
+                user_id,
+                "Premium Member",
+                start_date,
+                end_date
+            )
+
+        return {
+            "message": "Payment verified successfully",
+            "user_id": user_id,
+            "is_premium": True,
+            "plan_name": premium.plan_name,
+            "end_date": premium.end_date
+        }
+
+    @staticmethod
+    def get_premium_status(db: Session, user_id: int):
+        user = UserRepository.get_by_id(db, user_id)
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        premium = PaymentRepository.get_premium_by_user(db, user_id)
+
+        if not premium:
+            return {
+                "user_id": user_id,
+                "is_premium": False,
+                "plan_name": None,
+                "end_date": None
+            }
+
+        is_active = (
+            premium.is_premium == "Y"
+            and premium.end_date
+            and premium.end_date >= datetime.now()
+        )
+
+        return {
+            "user_id": user_id,
+            "is_premium": bool(is_active),
+            "plan_name": premium.plan_name if is_active else None,
+            "end_date": premium.end_date if is_active else None
+        }
+
+
+payment_service = PaymentService()
+-----------------------------------
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.core.dependencies import get_current_user
+from app.schemas.payment.payment_schema import (
+    CreateOrderRequest,
+    VerifyPaymentRequest
+)
+from app.services.payment_service import payment_service
+
+
+router = APIRouter(
+    prefix="/payments",
+    tags=["Payments"],
+    dependencies=[Depends(get_current_user)]
+)
+
+
+@router.post("/create-order")
+def create_order(
+    request: CreateOrderRequest,
+    db: Session = Depends(get_db)
+):
+    return payment_service.create_order(
+        db,
+        request.user_id,
+        request.plan_code
+    )
+
+
+@router.post("/verify-payment")
+def verify_payment(
+    request: VerifyPaymentRequest,
+    db: Session = Depends(get_db)
+):
+    return payment_service.verify_payment(
+        db,
+        request.user_id,
+        request.razorpay_order_id,
+        request.razorpay_payment_id,
+        request.razorpay_signature
+    )
+
+
+@router.get("/status/{user_id}")
+def get_premium_status(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    return payment_service.get_premium_status(db, user_id)
+    ------------------------------
+    
