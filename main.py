@@ -1,47 +1,42 @@
-# Step 1: Build React app
-FROM node:20-alpine AS build
+version: "3.9"
 
-WORKDIR /app
+services:
+  backend:
+    build:
+      context: ./budget-management-backend
+    container_name: budgetpro-backend
+    env_file:
+      - ./budget-management-backend/backend.env.docker
+    ports:
+      - "8000:8000"
+    networks:
+      - budget-net
+    restart: unless-stopped
 
-COPY package*.json ./
-RUN npm install
+  frontend:
+    build:
+      context: ./budget-management-frontend
+    container_name: budgetpro-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - budget-net
+    restart: unless-stopped
 
-COPY . .
-RUN npm run build
-
-# Step 2: Serve built files with Nginx
-FROM nginx:alpine
-
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
----------------------
-node_modules
-dist
-.git
-.gitignore
-.env
-Dockerfile
--------------------
-server {
-    listen 80;
-    server_name _;
-
-    root /usr/share/nginx/html;
-    index index.html;
-
-    location / {
-        try_files $uri /index.html;
-    }
-}
-----------------------
-docker run -d \
-  --name budgetpro-frontend \
-  -p 5173:80 \
-  budgetpro-frontend:dev
-  ----------------
-  docker build -t budgetpro-frontend:dev ./budget-management-frontend
-  -----------------------------------
+networks:
+  budget-net:
+    external: true
+    ---------------------
+    docker network create budget-net
+    --------------
+    docker network connect budget-net budget-oracle
+    -------------
+    docker rm -f budgetpro-frontend budgetpro-backend
+    --------------
+    docker start budget-oracle
+    --------------
+    docker compose up --build -d
+    ------------
+    
