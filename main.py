@@ -1,53 +1,44 @@
-DB_USER=budget_user
-DB_PASSWORD=budget123
-DB_HOST=budget-oracle
-DB_PORT=1521
-DB_SERVICE=FREEPDB1
-
-DATABASE_URL=oracle+oracledb://budget_user:budget123@budget-oracle:1521/FREEPDB1
-
-JWT_SECRET_KEY=my_super_secret_key_2026
-JWT_ALGORITHM=HS256
-JWT_EXPIRE_MINUTES=60
-
-EMAIL_ADDRESS=your_email_here
-EMAIL_PASSWORD=your_email_password_here
-
-GEMINI_API_KEY=your_gemini_key_here
-
-RAZORPAY_KEY_ID=rzp_test_xxxxxxxxxx
-RAZORPAY_KEY_SECRET=xxxxxxxxxxxx
-----------------------------------
-FROM python:3.12-slim
+# Step 1: Build React app
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY package*.json ./
+RUN npm install
 
 COPY . .
+RUN npm run build
 
-EXPOSE 8000
+# Step 2: Serve built files with Nginx
+FROM nginx:alpine
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
---------------------------
-venv
-__pycache__
-*.pyc
-.env
-backend.env.docker
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+---------------------
+node_modules
+dist
 .git
 .gitignore
-alembic/versions/__pycache__
-----------------------------------
+.env
+Dockerfile
+-------------------
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri /index.html;
+    }
+}
+----------------------
 docker run -d \
-  --name budgetpro-backend \
-  --env-file ./budget-management-backend/backend.env.docker \
-  --network budget-net \
-  -p 8000:8000 \
-  budgetpro-backend:dev
-  -------------------------
-  
+  --name budgetpro-frontend \
+  -p 5173:80 \
+  budgetpro-frontend:dev
