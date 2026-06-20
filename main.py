@@ -42,3 +42,6 @@ docker run -d \
   --name budgetpro-frontend \
   -p 5173:80 \
   budgetpro-frontend:dev
+  ----------------
+  docker build -t budgetpro-frontend:dev ./budget-management-frontend
+  -----------------------------------
